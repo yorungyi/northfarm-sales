@@ -6,8 +6,15 @@ import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
 
 // ── 숫자 입력 헬퍼 ─────────────────────────────────────────
-function fmt(n: number) { return n > 0 ? n.toLocaleString('ko-KR') : '' }
-function parse(s: string) { const n = parseInt(s.replace(/,/g, ''), 10); return isNaN(n) ? 0 : n }
+function fmt(n: number) {
+  if (n === 0) return ''
+  const abs = Math.abs(n).toLocaleString('ko-KR')
+  return n < 0 ? `-${abs}` : abs
+}
+function parse(s: string) {
+  const n = parseInt(s.replace(/,/g, ''), 10)
+  return isNaN(n) ? 0 : n
+}
 
 function NumInput({
   label, value, onChange, hint,
@@ -19,9 +26,17 @@ function NumInput({
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.replace(/,/g, '')
-    if (raw === '' || /^\d+$/.test(raw)) {
-      setDisp(raw === '' ? '' : Number(raw).toLocaleString('ko-KR'))
-      onChange(parse(raw))
+    // 허용: 빈값 / 음수부호만 / 선택적 음수부호 + 숫자
+    if (raw === '' || raw === '-' || /^-?\d+$/.test(raw)) {
+      if (raw === '' || raw === '-') {
+        setDisp(raw)
+        onChange(0)
+      } else {
+        const num = parseInt(raw, 10)
+        const absStr = Math.abs(num).toLocaleString('ko-KR')
+        setDisp(num < 0 ? `-${absStr}` : absStr)
+        onChange(num)
+      }
     }
   }
 
