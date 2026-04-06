@@ -170,8 +170,9 @@ export default function ClosingPage() {
     try {
       await upsertMonthlyClosing(fields)
       setToast({ message: '저장되었습니다!', type: 'success' })
-    } catch {
-      setToast({ message: '저장 실패. 다시 시도해주세요.', type: 'error' })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '알 수 없는 오류'
+      setToast({ message: `저장 실패: ${msg}`, type: 'error' })
     } finally {
       setSaving(false)
     }
@@ -244,10 +245,10 @@ export default function ClosingPage() {
             label="금액"
             value={fields.food_cost}
             onChange={(v) => set('food_cost', v)}
-            hint={fields.sales_total > 0 ? `${calc.food_cost_rate.toFixed(1)}%` : ''}
+            hint={fields.sales_total !== 0 ? `${calc.food_cost_rate.toFixed(1)}%` : ''}
           />
           <div className="mt-2 pt-2 border-t border-gray-50">
-            {statCell('원가율', fields.sales_total > 0 ? `${calc.food_cost_rate.toFixed(1)}%` : '-')}
+            {statCell('원가율', fields.sales_total !== 0 ? `${calc.food_cost_rate.toFixed(1)}%` : '-')}
           </div>
         </div>
 
@@ -261,7 +262,7 @@ export default function ClosingPage() {
           </div>
           <div className="mt-2 pt-2 border-t border-gray-50 space-y-0.5">
             {statCell('합계', `${calc.labor_total.toLocaleString()}천원`, true)}
-            {statCell('인건비율', fields.sales_total > 0 ? `${calc.labor_rate.toFixed(1)}%` : '-')}
+            {statCell('인건비율', fields.sales_total !== 0 ? `${calc.labor_rate.toFixed(1)}%` : '-')}
           </div>
         </div>
 
@@ -272,10 +273,10 @@ export default function ClosingPage() {
             label="금액"
             value={fields.manufacturing_cost}
             onChange={(v) => set('manufacturing_cost', v)}
-            hint={fields.sales_total > 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : ''}
+            hint={fields.sales_total !== 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : ''}
           />
           <div className="mt-2 pt-2 border-t border-gray-50">
-            {statCell('경비율', fields.sales_total > 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : '-')}
+            {statCell('경비율', fields.sales_total !== 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : '-')}
           </div>
         </div>
 
@@ -292,7 +293,7 @@ export default function ClosingPage() {
             <div className="flex justify-between items-center">
               <span className="text-sm text-blue-100">이익률</span>
               <span className="text-base font-bold text-white">
-                {fields.sales_total > 0 ? `${calc.profit_rate.toFixed(1)}%` : '-'}
+                {fields.sales_total !== 0 ? `${calc.profit_rate.toFixed(1)}%` : '-'}
               </span>
             </div>
           </div>

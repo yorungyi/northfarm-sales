@@ -25,7 +25,7 @@ export interface ClosingCalc {
 export function calcClosing(c: Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>): ClosingCalc {
   const labor_total = c.labor_direct + c.labor_dispatch + c.labor_support
   const profit = c.sales_total - c.food_cost - labor_total - c.manufacturing_cost
-  const safe = (n: number) => c.sales_total > 0 ? Math.round((n / c.sales_total) * 1000) / 10 : 0
+  const safe = (n: number) => c.sales_total !== 0 ? Math.round((n / c.sales_total) * 1000) / 10 : 0
 
   return {
     food_cost_rate: safe(c.food_cost),
