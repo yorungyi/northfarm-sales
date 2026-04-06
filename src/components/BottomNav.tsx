@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom'
 
 const tabs = [
-  { to: '/',        label: '대시보드', icon: '📊' },
-  { to: '/input',   label: '입력',     icon: '✏️' },
-  { to: '/monthly', label: '월별',     icon: '📅' },
+  { to: '/',         label: '대시보드', icon: '📊' },
+  { to: '/input',    label: '입력',     icon: '✏️' },
+  { to: '/monthly',  label: '월별',     icon: '📅' },
+  { to: '/closing',  label: '가마감',   icon: '💰' },
 ]
 
 export default function BottomNav() {
@@ -20,7 +21,7 @@ export default function BottomNav() {
             }`
           }
         >
-          <span className="text-xl leading-none">{tab.icon}</span>
+          <span className="text-lg leading-none">{tab.icon}</span>
           <span>{tab.label}</span>
         </NavLink>
       ))}
