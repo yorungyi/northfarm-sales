@@ -15,9 +15,9 @@ function parseAbs(s: string) {
 }
 
 function NumInput({
-  label, value, onChange, hint,
+  label, value, onChange, hint, hintNeg,
 }: {
-  label: string; value: number; onChange: (v: number) => void; hint?: string
+  label: string; value: number; onChange: (v: number) => void; hint?: string; hintNeg?: boolean
 }) {
   const isNeg = value < 0
   const [disp, setDisp] = useState(fmtAbs(value))
@@ -66,7 +66,11 @@ function NumInput({
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
       </div>
-      {hint && <span className="text-xs text-blue-600 font-semibold w-14 text-right shrink-0">{hint}</span>}
+      {hint && (
+        <span className={`text-xs font-semibold w-14 text-right shrink-0 ${hintNeg ? 'text-red-500' : 'text-blue-600'}`}>
+          {hint}
+        </span>
+      )}
     </div>
   )
 }
@@ -246,6 +250,7 @@ export default function ClosingPage() {
             value={fields.food_cost}
             onChange={(v) => set('food_cost', v)}
             hint={fields.sales_total !== 0 ? `${calc.food_cost_rate.toFixed(1)}%` : ''}
+            hintNeg={calc.food_cost_rate < 0}
           />
           <div className="mt-2 pt-2 border-t border-gray-50">
             {statCell('원가율', fields.sales_total !== 0 ? `${calc.food_cost_rate.toFixed(1)}%` : '-')}
@@ -274,6 +279,7 @@ export default function ClosingPage() {
             value={fields.manufacturing_cost}
             onChange={(v) => set('manufacturing_cost', v)}
             hint={fields.sales_total !== 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : ''}
+            hintNeg={calc.manufacturing_rate < 0}
           />
           <div className="mt-2 pt-2 border-t border-gray-50">
             {statCell('경비율', fields.sales_total !== 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : '-')}
