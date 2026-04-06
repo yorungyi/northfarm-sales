@@ -306,18 +306,24 @@ export default function ClosingPage() {
         </div>
 
         {/* 버튼 영역 */}
-        <div className="grid grid-cols-2 gap-3 pb-2">
+        <div className="grid grid-cols-3 gap-2 pb-2">
           <button
             onClick={handleCopy}
-            className="py-4 rounded-2xl font-bold text-base shadow active:scale-95 transition-transform"
+            className="py-4 rounded-2xl font-bold text-sm shadow active:scale-95 transition-transform"
             style={{ backgroundColor: '#FEE500', color: '#1A1A1A' }}
           >
             {copied ? '복사됨! ✓' : '카카오 복사'}
           </button>
           <button
+            onClick={() => setFields(EMPTY_FIELDS(selYear, selMonth))}
+            className="py-4 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm shadow-sm active:scale-95 transition-transform border border-gray-200"
+          >
+            초기화
+          </button>
+          <button
             onClick={handleSave}
             disabled={saving}
-            className="py-4 rounded-2xl bg-blue-600 text-white font-bold text-base shadow active:scale-95 transition-transform disabled:opacity-50"
+            className="py-4 rounded-2xl bg-blue-600 text-white font-bold text-sm shadow active:scale-95 transition-transform disabled:opacity-50"
           >
             {saving ? '저장 중...' : '저장'}
           </button>
