@@ -6,14 +6,12 @@ import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
 
 // ── 숫자 입력 헬퍼 ─────────────────────────────────────────
-function fmt(n: number) {
-  if (n === 0) return ''
-  const abs = Math.abs(n).toLocaleString('ko-KR')
-  return n < 0 ? `-${abs}` : abs
+function fmtAbs(n: number) {
+  return n === 0 ? '' : Math.abs(n).toLocaleString('ko-KR')
 }
-function parse(s: string) {
+function parseAbs(s: string) {
   const n = parseInt(s.replace(/,/g, ''), 10)
-  return isNaN(n) ? 0 : n
+  return isNaN(n) ? 0 : Math.abs(n)
 }
 
 function NumInput({
@@ -21,28 +19,38 @@ function NumInput({
 }: {
   label: string; value: number; onChange: (v: number) => void; hint?: string
 }) {
-  const [disp, setDisp] = useState(fmt(value))
-  useEffect(() => { setDisp(fmt(value)) }, [value])
+  const isNeg = value < 0
+  const [disp, setDisp] = useState(fmtAbs(value))
+  useEffect(() => { setDisp(fmtAbs(value)) }, [value])
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.replace(/,/g, '')
-    // 허용: 빈값 / 음수부호만 / 선택적 음수부호 + 숫자
-    if (raw === '' || raw === '-' || /^-?\d+$/.test(raw)) {
-      if (raw === '' || raw === '-') {
-        setDisp(raw)
-        onChange(0)
-      } else {
-        const num = parseInt(raw, 10)
-        const absStr = Math.abs(num).toLocaleString('ko-KR')
-        setDisp(num < 0 ? `-${absStr}` : absStr)
-        onChange(num)
-      }
+    if (raw === '' || /^\d+$/.test(raw)) {
+      setDisp(raw === '' ? '' : Number(raw).toLocaleString('ko-KR'))
+      const abs = parseAbs(raw)
+      onChange(isNeg ? -abs : abs)
     }
   }
 
+  function toggleSign() {
+    onChange(-value)
+  }
+
   return (
-    <div className="flex items-center gap-3">
-      <label className="text-sm text-gray-600 w-24 shrink-0">{label}</label>
+    <div className="flex items-center gap-2">
+      <label className="text-sm text-gray-600 w-20 shrink-0">{label}</label>
+      {/* 부호 토글 버튼 */}
+      <button
+        type="button"
+        onClick={toggleSign}
+        className={`w-8 h-8 rounded-lg text-sm font-bold shrink-0 transition-colors ${
+          isNeg
+            ? 'bg-red-100 text-red-600 border border-red-200'
+            : 'bg-gray-100 text-gray-500 border border-gray-200'
+        }`}
+      >
+        {isNeg ? '−' : '+'}
+      </button>
       <div className="relative flex-1">
         <input
           type="text"
@@ -50,11 +58,15 @@ function NumInput({
           value={disp}
           onChange={handleChange}
           placeholder="0"
-          className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
+          className={`w-full text-right pr-10 py-2.5 px-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-1 ${
+            isNeg
+              ? 'border-red-200 text-red-600 focus:border-red-400 focus:ring-red-400'
+              : 'border-gray-200 text-gray-800 focus:border-blue-400 focus:ring-blue-400'
+          }`}
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
       </div>
-      {hint && <span className="text-xs text-blue-600 font-semibold w-16 text-right shrink-0">{hint}</span>}
+      {hint && <span className="text-xs text-blue-600 font-semibold w-14 text-right shrink-0">{hint}</span>}
     </div>
   )
 }
