@@ -75,6 +75,7 @@ function buildKakaoText(
     ``,
     `🔧 제조경비`,
     `  ▸ ${pad('금  액')} ➜  ${n(d.manufacturing_cost)}천원`,
+    `  ▸ ${pad('경비율')} ➜      ${p(c.manufacturing_rate)}%`,
     ``,
     `📈 예상이익`,
     `  ▸ ${pad('금  액')} ➜  ${n(c.profit)}천원`,
@@ -240,7 +241,15 @@ export default function ClosingPage() {
         {/* 🔧 제조경비 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs font-bold text-gray-400 mb-3">🔧 제조경비</p>
-          <NumInput label="금액" value={fields.manufacturing_cost} onChange={(v) => set('manufacturing_cost', v)} />
+          <NumInput
+            label="금액"
+            value={fields.manufacturing_cost}
+            onChange={(v) => set('manufacturing_cost', v)}
+            hint={fields.sales_total > 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : ''}
+          />
+          <div className="mt-2 pt-2 border-t border-gray-50">
+            {statCell('경비율', fields.sales_total > 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : '-')}
+          </div>
         </div>
 
         {/* 📈 예상이익 (자동계산) */}

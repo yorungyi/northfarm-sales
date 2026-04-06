@@ -14,11 +14,12 @@ export interface MonthlyClosing {
 
 /** 자동 계산 항목 */
 export interface ClosingCalc {
-  food_cost_rate: number    // 원가율 %
-  labor_total: number       // 인건비 합계
-  labor_rate: number        // 인건비율 %
-  profit: number            // 예상이익
-  profit_rate: number       // 이익률 %
+  food_cost_rate: number         // 원가율 %
+  labor_total: number            // 인건비 합계
+  labor_rate: number             // 인건비율 %
+  manufacturing_rate: number     // 제조경비율 %
+  profit: number                 // 예상이익
+  profit_rate: number            // 이익률 %
 }
 
 export function calcClosing(c: Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>): ClosingCalc {
@@ -30,6 +31,7 @@ export function calcClosing(c: Omit<MonthlyClosing, 'id' | 'created_at' | 'updat
     food_cost_rate: safe(c.food_cost),
     labor_total,
     labor_rate: safe(labor_total),
+    manufacturing_rate: safe(c.manufacturing_cost),
     profit,
     profit_rate: safe(profit),
   }
