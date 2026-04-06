@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom'
 
 const tabs = [
-  { to: '/input',   label: '입력',   icon: '✏️' },
-  { to: '/monthly', label: '월별',   icon: '📅' },
+  { to: '/',        label: '대시보드', icon: '📊' },
+  { to: '/input',   label: '입력',     icon: '✏️' },
+  { to: '/monthly', label: '월별',     icon: '📅' },
 ]
 
 export default function BottomNav() {
@@ -12,6 +13,7 @@ export default function BottomNav() {
         <NavLink
           key={tab.to}
           to={tab.to}
+          end={tab.to === '/'}
           className={({ isActive }) =>
             `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs font-medium transition-colors min-h-[56px] ${
               isActive ? 'text-blue-600' : 'text-gray-400'

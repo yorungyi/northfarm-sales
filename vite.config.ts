@@ -16,7 +16,7 @@ export default defineConfig({
         theme_color: '#185FA5',
         background_color: '#ffffff',
         display: 'standalone',
-        start_url: '/input',
+        start_url: '/',
         icons: [
           {
             src: '/icons/icon-192x192.png',
