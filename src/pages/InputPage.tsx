@@ -17,6 +17,9 @@ export default function InputPage() {
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [memos, setMemos] = useState<Record<Venue, string>>({
+    [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
+  })
 
   useEffect(() => {
     const dateParam = searchParams.get('date')
@@ -55,6 +58,17 @@ export default function InputPage() {
     }).catch(() => {})
   }, [selectedDate, resetInputs, setInput])
 
+  // 날짜 변경 시 메모 localStorage에서 로드
+  useEffect(() => {
+    const loaded: Record<Venue, string> = {
+      [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
+    }
+    for (const v of VENUES) {
+      loaded[v] = localStorage.getItem(`northfarm_memo_${selectedDate}_${v}`) ?? ''
+    }
+    setMemos(loaded)
+  }, [selectedDate])
+
   const total = VENUES.reduce((sum, v) => sum + inputs[v], 0)
 
   const handleSave = useCallback(async () => {
@@ -69,13 +83,22 @@ export default function InputPage() {
           upsertSales(selectedDate, venue, inputs[venue], 0)
         )
       )
+      // 메모 localStorage 저장
+      for (const v of VENUES) {
+        const key = `northfarm_memo_${selectedDate}_${v}`
+        if (memos[v].trim()) {
+          localStorage.setItem(key, memos[v].trim())
+        } else {
+          localStorage.removeItem(key)
+        }
+      }
       setToast({ message: '저장되었습니다!', type: 'success' })
     } catch {
       setToast({ message: '저장에 실패했습니다. 다시 시도해주세요.', type: 'error' })
     } finally {
       setSaving(false)
     }
-  }, [isOnline, selectedDate, inputs])
+  }, [isOnline, selectedDate, inputs, memos])
 
   return (
     <div className="min-h-screen bg-gray-50 pb-36">
@@ -113,7 +136,9 @@ export default function InputPage() {
             venue={venue}
             netSales={inputs[venue]}
             prevDaySales={prevDayMap[venue] ?? null}
+            memo={memos[venue]}
             onChange={(value) => setInput(venue, value)}
+            onMemoChange={(m) => setMemos((prev) => ({ ...prev, [venue]: m }))}
           />
         ))}
       </div>

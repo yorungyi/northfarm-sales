@@ -7,14 +7,18 @@ interface VenueInputCardProps {
   venue: Venue
   netSales: number
   prevDaySales: DailySales | null
+  memo: string
   onChange: (value: number) => void
+  onMemoChange: (memo: string) => void
 }
 
 export default function VenueInputCard({
   venue,
   netSales,
   prevDaySales,
+  memo,
   onChange,
+  onMemoChange,
 }: VenueInputCardProps) {
   const [display, setDisplay] = useState(formatNumber(netSales))
 
@@ -51,6 +55,15 @@ export default function VenueInputCard({
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">원</span>
       </div>
+      {/* 비고 입력 */}
+      <input
+        type="text"
+        value={memo}
+        onChange={(e) => onMemoChange(e.target.value)}
+        placeholder="비고 (우천, 행사, 단체 등)"
+        maxLength={50}
+        className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-100 bg-gray-50 text-xs text-gray-600 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-200"
+      />
     </div>
   )
 }

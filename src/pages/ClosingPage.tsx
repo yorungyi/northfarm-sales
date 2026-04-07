@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { calcClosing } from '../types/closing'
 import type { MonthlyClosing } from '../types/closing'
-import { getMonthlyClosing, upsertMonthlyClosing } from '../lib/api'
+import { getMonthlyClosing, upsertMonthlyClosing, getSalesByMonth } from '../lib/api'
 import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
 
@@ -142,22 +142,33 @@ export default function ClosingPage() {
   const [saving, setSaving]     = useState(false)
   const [copied, setCopied]     = useState(false)
   const [toast, setToast]       = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [dailyTotal, setDailyTotal] = useState<number | null>(null) // 일매출 합산값
 
   const tabs = getRecentMonths(6)
 
-  // 월 전환 시 기존 데이터 로드
+  // 월 전환 시 기존 데이터 + 일매출 합계 동시 로드
   useEffect(() => {
     setFields(EMPTY_FIELDS(selYear, selMonth))
-    getMonthlyClosing(selYear, selMonth).then((data) => {
-      if (data) {
+    setDailyTotal(null)
+
+    Promise.all([
+      getMonthlyClosing(selYear, selMonth),
+      getSalesByMonth(selYear, selMonth),
+    ]).then(([closing, dailyRows]) => {
+      // 일매출 합산 (천원 단위로 변환)
+      const sum = dailyRows.reduce((acc, r) => acc + r.total_sales, 0)
+      const sumK = Math.round(sum / 1000) // 원 → 천원
+      setDailyTotal(sumK)
+
+      if (closing) {
         setFields({
-          year: data.year, month: data.month,
-          sales_total: data.sales_total,
-          food_cost: data.food_cost,
-          labor_direct: data.labor_direct,
-          labor_dispatch: data.labor_dispatch,
-          labor_support: data.labor_support,
-          manufacturing_cost: data.manufacturing_cost,
+          year: closing.year, month: closing.month,
+          sales_total: closing.sales_total,
+          food_cost: closing.food_cost,
+          labor_direct: closing.labor_direct,
+          labor_dispatch: closing.labor_dispatch,
+          labor_support: closing.labor_support,
+          manufacturing_cost: closing.manufacturing_cost,
         })
       }
     }).catch(() => {})
@@ -238,8 +249,26 @@ export default function ClosingPage() {
 
         {/* 💰 매출 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs font-bold text-gray-400 mb-3">💰 매출</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-gray-400">💰 매출</p>
+            {/* 일매출 합산 자동채우기 버튼 */}
+            {dailyTotal !== null && (
+              <button
+                type="button"
+                onClick={() => set('sales_total', dailyTotal)}
+                className="text-xs text-blue-600 font-medium px-2.5 py-1 rounded-lg border border-blue-200 active:bg-blue-50 transition-colors"
+              >
+                일매출 합계 적용 ({dailyTotal.toLocaleString()}천원)
+              </button>
+            )}
+          </div>
           <NumInput label="합계" value={fields.sales_total} onChange={(v) => set('sales_total', v)} />
+          {/* 일매출 합계와 다를 때 경고 */}
+          {dailyTotal !== null && fields.sales_total !== 0 && fields.sales_total !== dailyTotal && (
+            <p className="mt-2 text-xs text-amber-500 font-medium">
+              ⚠ 일매출 합계({dailyTotal.toLocaleString()}천원)와 다릅니다
+            </p>
+          )}
         </div>
 
         {/* 🥩 식재료비 */}

@@ -47,6 +47,18 @@ export async function getSalesByMonth(year: number, month: number): Promise<Dail
   return (data ?? []) as DailySales[]
 }
 
+/** 날짜 범위 조회 (startDate 이상 endDate 미만, YYYY-MM-DD) */
+export async function getSalesByRange(startDate: string, endDate: string): Promise<DailySales[]> {
+  const { data, error } = await supabase
+    .from('daily_sales')
+    .select('*')
+    .gte('sale_date', startDate)
+    .lt('sale_date', endDate)
+    .order('sale_date', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as DailySales[]
+}
+
 /** 월 가마감 단건 조회 */
 export async function getMonthlyClosing(year: number, month: number): Promise<MonthlyClosing | null> {
   const { data, error } = await supabase

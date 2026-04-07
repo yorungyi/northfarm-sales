@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { DailySales } from '../types/sales'
+import { Venue, VENUES } from '../types/sales'
 import { getSalesByMonth } from '../lib/api'
 import { formatCurrency, calcChangeRate } from '../utils/format'
 import BottomNav from '../components/BottomNav'
@@ -19,6 +20,14 @@ function getRecentMonths(count: number): { year: number; month: number }[] {
   return result
 }
 
+// 업장별 색상 (도넛 차트와 동일)
+const VENUE_COLORS: Record<Venue, string> = {
+  [Venue.CLUBHOUSE]:  '#3B82F6',
+  [Venue.STARTHOUSE]: '#10B981',
+  [Venue.EAST_SHADE]: '#F59E0B',
+  [Venue.WEST_SHADE]: '#8B5CF6',
+}
+
 export default function MonthlyPage() {
   const navigate = useNavigate()
   const today = new Date()
@@ -26,34 +35,49 @@ export default function MonthlyPage() {
   const [selMonth, setSelMonth] = useState(today.getMonth() + 1)
   const [rows, setRows] = useState<DailySales[]>([])
   const [prevRows, setPrevRows] = useState<DailySales[]>([])
+  const [lastYearRows, setLastYearRows] = useState<DailySales[]>([])
   const [loading, setLoading] = useState(false)
+  const [expandedDate, setExpandedDate] = useState<string | null>(null)
 
   const tabs = getRecentMonths(6)
   const todayStr = today.toLocaleDateString('sv-SE')
 
   useEffect(() => {
     setLoading(true)
+    setExpandedDate(null) // 월 전환 시 펼침 초기화
     const prevMonth = selMonth === 1 ? 12 : selMonth - 1
     const prevYear = selMonth === 1 ? selYear - 1 : selYear
     Promise.all([
       getSalesByMonth(selYear, selMonth),
       getSalesByMonth(prevYear, prevMonth),
-    ]).then(([cur, prev]) => {
+      getSalesByMonth(selYear - 1, selMonth), // 전년 동월
+    ]).then(([cur, prev, lastYear]) => {
       setRows(cur)
       setPrevRows(prev)
+      setLastYearRows(lastYear)
     }).finally(() => setLoading(false))
   }, [selYear, selMonth])
 
-  // 날짜별 순매출 합산
+  // 날짜별 합계 맵
   const dayMap = new Map<string, number>()
   for (const r of rows) {
     dayMap.set(r.sale_date, (dayMap.get(r.sale_date) ?? 0) + r.total_sales)
   }
 
+  // 날짜 × 업장 맵 (드릴다운용)
+  const venueMap = new Map<string, Partial<Record<Venue, number>>>()
+  for (const r of rows) {
+    const vMap = venueMap.get(r.sale_date) ?? {}
+    vMap[r.venue as Venue] = (vMap[r.venue as Venue] ?? 0) + r.total_sales
+    venueMap.set(r.sale_date, vMap)
+  }
+
   const daysInMonth = getDaysInMonth(selYear, selMonth)
   const monthTotal = [...dayMap.values()].reduce((s, v) => s + v, 0)
   const prevTotal = prevRows.reduce((s, r) => s + r.total_sales, 0)
+  const lastYearTotal = lastYearRows.reduce((s, r) => s + r.total_sales, 0)
   const changeRate = calcChangeRate(monthTotal, prevTotal)
+  const yoyRate = calcChangeRate(monthTotal, lastYearTotal)
 
   type DaySummary = { date: string; net: number; hasData: boolean }
   const daySummaries: DaySummary[] = Array.from({ length: daysInMonth }, (_, i) => {
@@ -93,20 +117,28 @@ export default function MonthlyPage() {
         <div className="bg-blue-600 rounded-2xl p-4 text-white text-center shadow">
           <p className="text-sm text-blue-200">{selMonth}월 순매출 합계</p>
           <p className="text-2xl font-bold mt-1">{formatCurrency(monthTotal)}</p>
-          {changeRate !== null && (
-            <p className={`text-sm mt-1 ${changeRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-              전월 대비 {changeRate >= 0 ? '↑' : '↓'}{Math.abs(changeRate)}%
-            </p>
-          )}
+          <div className="flex justify-center gap-4 mt-1.5">
+            {changeRate !== null && (
+              <p className={`text-sm ${changeRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                전월 {changeRate >= 0 ? '↑' : '↓'}{Math.abs(changeRate)}%
+              </p>
+            )}
+            {yoyRate !== null && (
+              <p className={`text-sm ${yoyRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                전년 동월 {yoyRate >= 0 ? '↑' : '↓'}{Math.abs(yoyRate)}%
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
       {/* 일별 목록 */}
       <div className="px-4 pt-4 max-w-lg mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="grid grid-cols-2 text-xs text-gray-400 font-medium px-4 py-2 border-b border-gray-100">
+          <div className="grid grid-cols-3 text-xs text-gray-400 font-medium px-4 py-2 border-b border-gray-100">
             <span>날짜</span>
             <span className="text-right">순매출</span>
+            <span></span>
           </div>
 
           {loading ? (
@@ -117,25 +149,88 @@ export default function MonthlyPage() {
                 const isPast = day.date < todayStr
                 const isToday = day.date === todayStr
                 const missing = isPast && !day.hasData
+                const isExpanded = expandedDate === day.date
+                const vMap = venueMap.get(day.date) ?? {}
 
                 return (
-                  <button
-                    key={day.date}
-                    onClick={() => day.hasData && navigate(`/detail/${day.date}`)}
-                    disabled={!day.hasData}
-                    className={`w-full grid grid-cols-2 px-4 py-3 border-b border-gray-50 last:border-0 text-sm transition-colors ${
-                      day.hasData ? 'active:bg-blue-50 cursor-pointer' : 'cursor-default'
-                    } ${isToday ? 'bg-blue-50' : ''}`}
-                  >
-                    <span className="flex items-center gap-1.5 font-medium text-gray-700">
-                      {day.date.slice(5).replace('-', '/')}
-                      {missing && <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />}
-                      {day.hasData && <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />}
-                    </span>
-                    <span className={`text-right font-medium ${day.hasData ? 'text-gray-800' : 'text-gray-300'}`}>
-                      {day.hasData ? day.net.toLocaleString() + '원' : '-'}
-                    </span>
-                  </button>
+                  <div key={day.date} className="border-b border-gray-50 last:border-0">
+                    {/* 날짜 행 */}
+                    <button
+                      onClick={() => {
+                        if (day.hasData) {
+                          // 데이터 있는 날 → 드릴다운 토글
+                          setExpandedDate(isExpanded ? null : day.date)
+                        } else if (isPast || isToday) {
+                          navigate(`/input?date=${day.date}`)
+                        }
+                      }}
+                      disabled={!day.hasData && !isPast && !isToday}
+                      className={`w-full grid grid-cols-3 px-4 py-3 text-sm transition-colors ${
+                        day.hasData
+                          ? isExpanded
+                            ? 'bg-blue-50'
+                            : 'active:bg-blue-50 cursor-pointer'
+                          : (isPast || isToday)
+                            ? 'active:bg-red-50 cursor-pointer'
+                            : 'cursor-default'
+                      } ${isToday && !isExpanded ? 'bg-blue-50' : ''}`}
+                    >
+                      <span className="flex items-center gap-1.5 font-medium text-gray-700">
+                        {day.date.slice(5).replace('-', '/')}
+                        {missing && <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />}
+                        {day.hasData && (
+                          <span className={`w-1.5 h-1.5 rounded-full inline-block ${isExpanded ? 'bg-blue-500' : 'bg-green-400'}`} />
+                        )}
+                      </span>
+                      <span className={`text-right font-medium ${day.hasData ? 'text-gray-800' : 'text-gray-300'}`}>
+                        {day.hasData ? day.net.toLocaleString() + '원' : '-'}
+                      </span>
+                      <span className="text-right">
+                        {missing && <span className="text-xs text-red-400 font-medium">입력 →</span>}
+                        {day.hasData && (
+                          <span className="text-xs text-gray-400">{isExpanded ? '▲' : '▼'}</span>
+                        )}
+                      </span>
+                    </button>
+
+                    {/* 드릴다운 패널 */}
+                    {isExpanded && (
+                      <div className="bg-gray-50 px-4 pb-3 pt-1 space-y-1.5">
+                        {VENUES.map((venue) => {
+                          const net = vMap[venue] ?? 0
+                          const pct = day.net > 0 ? Math.round((net / day.net) * 100) : 0
+                          return (
+                            <div key={venue} className="flex items-center gap-2">
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: VENUE_COLORS[venue] }}
+                              />
+                              <span className="text-xs text-gray-600 flex-1">{venue}</span>
+                              <span className="text-xs text-gray-400 w-8 text-right">{net > 0 ? `${pct}%` : '-'}</span>
+                              <span className="text-xs font-medium text-gray-800 w-24 text-right">
+                                {net > 0 ? net.toLocaleString() + '원' : '-'}
+                              </span>
+                            </div>
+                          )
+                        })}
+                        {/* 상세 / 수정 링크 */}
+                        <div className="flex gap-2 pt-1.5">
+                          <button
+                            onClick={() => navigate(`/detail/${day.date}`)}
+                            className="flex-1 text-xs text-blue-600 font-medium py-1.5 rounded-lg border border-blue-200 active:bg-blue-50"
+                          >
+                            상세 보기
+                          </button>
+                          <button
+                            onClick={() => navigate(`/input?date=${day.date}`)}
+                            className="flex-1 text-xs text-gray-600 font-medium py-1.5 rounded-lg border border-gray-200 active:bg-gray-100"
+                          >
+                            수정
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )
               })}
 

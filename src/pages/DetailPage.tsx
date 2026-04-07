@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { DailySales } from '../types/sales'
 import { Venue, VENUES } from '../types/sales'
-import { getSalesByDate } from '../lib/api'
+import { getSalesByDate, getSalesByMonth } from '../lib/api'
 import { formatDate, formatCurrency, calcChangeRate } from '../utils/format'
 import { generateKakaoReport } from '../utils/kakao'
+import type { KakaoReportOptions } from '../utils/kakao'
 import BottomNav from '../components/BottomNav'
 
 export default function DetailPage() {
@@ -14,6 +15,10 @@ export default function DetailPage() {
 
   const [salesMap, setSalesMap] = useState<Partial<Record<Venue, DailySales>>>({})
   const [prevMap, setPrevMap] = useState<Partial<Record<Venue, DailySales>>>({})
+  const [monthTotal, setMonthTotal] = useState<number>(0)
+  const [memos, setMemos] = useState<Record<Venue, string>>({
+    [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
+  })
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
@@ -23,7 +28,15 @@ export default function DetailPage() {
     prevDate.setDate(prevDate.getDate() - 1)
     const prevDateStr = prevDate.toLocaleDateString('sv-SE')
 
-    Promise.all([getSalesByDate(safeDate), getSalesByDate(prevDateStr)]).then(([cur, prev]) => {
+    const dateObj = new Date(safeDate + 'T00:00:00')
+    const year = dateObj.getFullYear()
+    const month = dateObj.getMonth() + 1
+
+    Promise.all([
+      getSalesByDate(safeDate),
+      getSalesByDate(prevDateStr),
+      getSalesByMonth(year, month), // 월 누적용
+    ]).then(([cur, prev, monthRows]) => {
       const cm: Partial<Record<Venue, DailySales>> = {}
       for (const r of cur) cm[r.venue as Venue] = r
       setSalesMap(cm)
@@ -31,6 +44,18 @@ export default function DetailPage() {
       const pm: Partial<Record<Venue, DailySales>> = {}
       for (const r of prev) pm[r.venue as Venue] = r
       setPrevMap(pm)
+
+      // 월 누적 합계
+      setMonthTotal(monthRows.reduce((s, r) => s + r.total_sales, 0))
+
+      // 메모 로드
+      const loaded: Record<Venue, string> = {
+        [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
+      }
+      for (const v of VENUES) {
+        loaded[v] = localStorage.getItem(`northfarm_memo_${safeDate}_${v}`) ?? ''
+      }
+      setMemos(loaded)
     }).finally(() => setLoading(false))
   }, [safeDate])
 
@@ -40,7 +65,15 @@ export default function DetailPage() {
   const prevTotalNet = VENUES.reduce((s, v) => s + (prevMap[v]?.total_sales ?? 0), 0)
 
   async function handleCopy() {
-    const text = generateKakaoReport(safeDate, salesMap)
+    const dateObj = new Date(safeDate + 'T00:00:00')
+    const options: KakaoReportOptions = {
+      salesMap,
+      prevMap,
+      monthTotal,
+      selMonth: dateObj.getMonth() + 1,
+      memos,
+    }
+    const text = generateKakaoReport(safeDate, options)
     try {
       await navigator.clipboard.writeText(text)
     } catch {
@@ -98,16 +131,24 @@ export default function DetailPage() {
             const rate = calcChangeRate(net, prevNet)
 
             return (
-              <div key={venue} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center justify-between">
-                <span className="font-bold text-gray-800">{venue}</span>
-                <div className="text-right">
-                  <span className="font-bold text-gray-800">{formatCurrency(net)}</span>
-                  {rate !== null && (
-                    <span className={`text-xs ml-2 ${rate >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                      {rate >= 0 ? '↑' : '↓'}{Math.abs(rate)}%
-                    </span>
-                  )}
+              <div key={venue} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-gray-800">{venue}</span>
+                  <div className="text-right">
+                    <span className="font-bold text-gray-800">{formatCurrency(net)}</span>
+                    {rate !== null && (
+                      <span className={`text-xs ml-2 ${rate >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                        {rate >= 0 ? '↑' : '↓'}{Math.abs(rate)}%
+                      </span>
+                    )}
+                  </div>
                 </div>
+                {/* 메모 표시 */}
+                {memos[venue] && (
+                  <p className="mt-1.5 text-xs text-gray-400 bg-gray-50 rounded-lg px-2.5 py-1.5">
+                    📝 {memos[venue]}
+                  </p>
+                )}
               </div>
             )
           })}
