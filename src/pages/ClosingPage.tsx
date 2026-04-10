@@ -120,16 +120,16 @@ function buildKakaoText(
 // ── 목표 관리 ───────────────────────────────────────────────
 interface ClosingTarget {
   sales: number
-  food_rate: number
-  profit_rate: number
+  food_cost: number   // 목표 식재비 (천원)
+  profit: number      // 목표 이익 (천원)
 }
 
-const DEFAULT_TARGET: ClosingTarget = { sales: 0, food_rate: 0, profit_rate: 0 }
+const DEFAULT_TARGET: ClosingTarget = { sales: 0, food_cost: 0, profit: 0 }
 
 function loadTarget(year: number, month: number): ClosingTarget {
   try {
     const raw = localStorage.getItem(`closing_target_${year}_${month}`)
-    if (raw) return JSON.parse(raw) as ClosingTarget
+    if (raw) return { ...DEFAULT_TARGET, ...JSON.parse(raw) as ClosingTarget }
   } catch { /* 무시 */ }
   return { ...DEFAULT_TARGET }
 }
@@ -375,42 +375,42 @@ export default function ClosingPage() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
                 </div>
               </div>
-              {/* 목표 원가율 */}
+              {/* 목표 식재비 */}
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-20 shrink-0">목표 원가율</label>
+                <label className="text-sm text-gray-600 w-20 shrink-0">목표 식재비</label>
                 <div className="relative flex-1">
                   <input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.1"
-                    value={target.food_rate === 0 ? '' : target.food_rate}
+                    type="text"
+                    inputMode="numeric"
+                    value={target.food_cost === 0 ? '' : target.food_cost.toLocaleString('ko-KR')}
                     onChange={e => {
-                      const n = parseFloat(e.target.value)
-                      updateTarget('food_rate', isNaN(n) ? 0 : n)
+                      const raw = e.target.value.replace(/,/g, '')
+                      const n = parseInt(raw, 10)
+                      updateTarget('food_cost', isNaN(n) ? 0 : n)
                     }}
-                    placeholder="0.0"
-                    className="w-full text-right pr-8 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                    placeholder="0"
+                    className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
                 </div>
               </div>
-              {/* 목표 이익률 */}
+              {/* 목표 이익 */}
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-20 shrink-0">목표 이익률</label>
+                <label className="text-sm text-gray-600 w-20 shrink-0">목표 이익</label>
                 <div className="relative flex-1">
                   <input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.1"
-                    value={target.profit_rate === 0 ? '' : target.profit_rate}
+                    type="text"
+                    inputMode="numeric"
+                    value={target.profit === 0 ? '' : target.profit.toLocaleString('ko-KR')}
                     onChange={e => {
-                      const n = parseFloat(e.target.value)
-                      updateTarget('profit_rate', isNaN(n) ? 0 : n)
+                      const raw = e.target.value.replace(/,/g, '')
+                      const n = parseInt(raw, 10)
+                      updateTarget('profit', isNaN(n) ? 0 : n)
                     }}
-                    placeholder="0.0"
-                    className="w-full text-right pr-8 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                    placeholder="0"
+                    className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
                 </div>
               </div>
             </div>
@@ -471,9 +471,9 @@ export default function ClosingPage() {
                 lowerIsBetter
               />
             ) : null}
-            {target.food_rate > 0 && hasSales ? (
-              <span className={`text-xs font-semibold ${targetColor(calc.food_cost_rate, target.food_rate, true)}`}>
-                목표 {target.food_rate}%
+            {target.food_cost > 0 ? (
+              <span className={`text-xs font-semibold ${targetColor(fields.food_cost, target.food_cost, true)}`}>
+                목표 {target.food_cost.toLocaleString()}천원
               </span>
             ) : null}
           </div>
@@ -548,11 +548,11 @@ export default function ClosingPage() {
                 {Math.abs(calc.profit_rate - prevData.calc.profit_rate).toFixed(1)}%p
               </span>
             ) : null}
-            {target.profit_rate > 0 && hasSales ? (
+            {target.profit > 0 ? (
               <span className={`text-xs font-semibold ${
-                calc.profit_rate >= target.profit_rate ? 'text-green-300' : 'text-yellow-300'
+                calc.profit >= target.profit ? 'text-green-300' : 'text-yellow-300'
               }`}>
-                목표 {target.profit_rate}%
+                목표 {target.profit.toLocaleString()}천원
               </span>
             ) : null}
           </div>
