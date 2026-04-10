@@ -435,9 +435,10 @@ export default function ClosingPage() {
               <button
                 type="button"
                 onClick={() => set('sales_total', dailyTotal)}
-                className="text-xs text-blue-600 font-medium px-2.5 py-1 rounded-lg border border-blue-200 active:bg-blue-50 transition-colors"
+                className="text-xs text-blue-600 font-medium px-2.5 py-1 rounded-lg border border-blue-200 active:bg-blue-50 transition-colors shrink-0 text-center leading-tight"
               >
-                일매출 합계 적용 ({dailyTotal.toLocaleString()}천원)
+                <span className="block">일매출 합계 적용</span>
+                <span className="block">{dailyTotal.toLocaleString()}천원</span>
               </button>
             ) : null}
           </div>
