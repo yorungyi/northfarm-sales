@@ -65,8 +65,8 @@ const OPTIONS = {
     y2: {
       type: 'linear' as const,
       position: 'right' as const,
-      min: -250,
-      max: 100,
+      min: -40,
+      max: 80,
       ticks: {
         callback: (v: any) => `${v}%`,
         font: { size: 10 },
