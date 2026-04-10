@@ -65,12 +65,10 @@ const OPTIONS = {
     y2: {
       type: 'linear' as const,
       position: 'right' as const,
-      min: -40,
-      max: 80,
       ticks: {
         callback: (v: any) => `${v}%`,
         font: { size: 10 },
-        maxTicksLimit: 7,
+        maxTicksLimit: 5,
       },
       grid: { drawOnChartArea: false },
     },
