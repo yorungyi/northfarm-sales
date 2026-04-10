@@ -8,12 +8,21 @@ import {
   PointElement,
   Tooltip,
   Legend,
+  BarController,
+  LineController,
 } from 'chart.js'
 import { Chart } from 'react-chartjs-2'
 import type { MonthlyClosing } from '../types/closing'
 import { calcClosing } from '../types/closing'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend)
+// 믹스드 차트(bar+line)에 필요한 컨트롤러까지 명시적 등록
+// Vite 트리쉐이킹이 react-chartjs-2의 사이드이펙트를 제거할 수 있으므로 직접 등록
+ChartJS.register(
+  CategoryScale, LinearScale,
+  BarElement, LineElement, PointElement,
+  Tooltip, Legend,
+  BarController, LineController,
+)
 
 // chart.js tick/tooltip 콜백은 any 타입 — 라이브러리 제약
 /* eslint-disable @typescript-eslint/no-explicit-any */
