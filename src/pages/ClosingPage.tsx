@@ -1,9 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { calcClosing } from '../types/closing'
 import type { MonthlyClosing } from '../types/closing'
-import { getMonthlyClosing, upsertMonthlyClosing, getSalesByMonth } from '../lib/api'
+import {
+  getMonthlyClosing,
+  upsertMonthlyClosing,
+  getSalesByMonth,
+  getRecentClosings,
+} from '../lib/api'
 import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
+import ClosingTrendChart from '../components/ClosingTrendChart'
 
 // ── 숫자 입력 헬퍼 ─────────────────────────────────────────
 function fmtAbs(n: number) {
@@ -32,14 +38,11 @@ function NumInput({
     }
   }
 
-  function toggleSign() {
-    onChange(-value)
-  }
+  function toggleSign() { onChange(-value) }
 
   return (
     <div className="flex items-center gap-2">
       <label className="text-sm text-gray-600 w-20 shrink-0">{label}</label>
-      {/* 부호 토글 버튼 */}
       <button
         type="button"
         onClick={toggleSign}
@@ -114,6 +117,70 @@ function buildKakaoText(
   ].join('\n')
 }
 
+// ── 목표 관리 ───────────────────────────────────────────────
+interface ClosingTarget {
+  sales: number
+  food_rate: number
+  profit_rate: number
+}
+
+const DEFAULT_TARGET: ClosingTarget = { sales: 0, food_rate: 0, profit_rate: 0 }
+
+function loadTarget(year: number, month: number): ClosingTarget {
+  try {
+    const raw = localStorage.getItem(`closing_target_${year}_${month}`)
+    if (raw) return JSON.parse(raw) as ClosingTarget
+  } catch { /* 무시 */ }
+  return { ...DEFAULT_TARGET }
+}
+
+function saveTarget(year: number, month: number, target: ClosingTarget) {
+  localStorage.setItem(`closing_target_${year}_${month}`, JSON.stringify(target))
+}
+
+// ── 전월 대비 뱃지 ──────────────────────────────────────────
+function DeltaBadge({
+  current, prev, unit = '%p', lowerIsBetter = false,
+}: {
+  current: number; prev: number | undefined; unit?: string; lowerIsBetter?: boolean
+}) {
+  if (prev === undefined || prev === 0 || current === 0) return null
+  const diff = current - prev
+  const threshold = unit === '천원' ? 1 : 0.05
+  if (Math.abs(diff) < threshold) return null
+  const improved = lowerIsBetter ? diff < 0 : diff > 0
+  const sign = diff > 0 ? '▲' : '▼'
+  const absVal = unit === '천원'
+    ? Math.abs(Math.round(diff)).toLocaleString('ko-KR')
+    : Math.abs(diff).toFixed(1)
+  return (
+    <span className={`text-xs font-semibold ${improved ? 'text-blue-500' : 'text-red-400'}`}>
+      {sign}{absVal}{unit}
+    </span>
+  )
+}
+
+// ── 달성률 뱃지 ─────────────────────────────────────────────
+function AchieveBadge({ actual, target }: { actual: number; target: number }) {
+  if (target <= 0 || actual <= 0) return null
+  const rate = (actual / target) * 100
+  const cls = rate >= 100 ? 'text-green-600 bg-green-50 border-green-200'
+            : rate >= 80  ? 'text-amber-600 bg-amber-50 border-amber-200'
+            : 'text-red-600 bg-red-50 border-red-200'
+  return (
+    <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${cls}`}>
+      달성 {rate.toFixed(1)}%
+    </span>
+  )
+}
+
+// ── 목표 대비 색상 ──────────────────────────────────────────
+function targetColor(actual: number, goal: number, lowerIsBetter = false) {
+  if (goal <= 0 || actual <= 0) return 'text-gray-400'
+  const good = lowerIsBetter ? actual <= goal : actual >= goal
+  return good ? 'text-green-600' : 'text-red-500'
+}
+
 // ── 메인 컴포넌트 ───────────────────────────────────────────
 type Fields = Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>
 
@@ -142,24 +209,30 @@ export default function ClosingPage() {
   const [saving, setSaving]     = useState(false)
   const [copied, setCopied]     = useState(false)
   const [toast, setToast]       = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-  const [dailyTotal, setDailyTotal] = useState<number | null>(null) // 일매출 합산값
+  const [dailyTotal, setDailyTotal]   = useState<number | null>(null)
+  const [history, setHistory]         = useState<MonthlyClosing[]>([])
+  const [target, setTarget]           = useState<ClosingTarget>({ ...DEFAULT_TARGET })
+  const [showTarget, setShowTarget]   = useState(false)
 
   const tabs = getRecentMonths(6)
 
-  // 월 전환 시 기존 데이터 + 일매출 합계 동시 로드
+  // 최근 7개월 가마감 초기 로드
+  useEffect(() => {
+    getRecentClosings(7).then(setHistory).catch(() => {})
+  }, [])
+
+  // 탭 전환 시 데이터 + 목표 로드
   useEffect(() => {
     setFields(EMPTY_FIELDS(selYear, selMonth))
     setDailyTotal(null)
+    setTarget(loadTarget(selYear, selMonth))
 
     Promise.all([
       getMonthlyClosing(selYear, selMonth),
       getSalesByMonth(selYear, selMonth),
     ]).then(([closing, dailyRows]) => {
-      // 일매출 합산 (천원 단위로 변환)
-      const sum = dailyRows.reduce((acc, r) => acc + r.total_sales, 0)
-      const sumK = Math.round(sum / 1000) // 원 → 천원
+      const sumK = Math.round(dailyRows.reduce((acc, r) => acc + r.total_sales, 0) / 1000)
       setDailyTotal(sumK)
-
       if (closing) {
         setFields({
           year: closing.year, month: closing.month,
@@ -175,15 +248,33 @@ export default function ClosingPage() {
   }, [selYear, selMonth])
 
   function set<K extends keyof Fields>(key: K, value: Fields[K]) {
-    setFields((prev) => ({ ...prev, [key]: value }))
+    setFields(prev => ({ ...prev, [key]: value }))
+  }
+
+  function updateTarget<K extends keyof ClosingTarget>(key: K, value: ClosingTarget[K]) {
+    setTarget(prev => {
+      const next = { ...prev, [key]: value }
+      saveTarget(selYear, selMonth, next)
+      return next
+    })
   }
 
   const calc = calcClosing(fields)
+
+  // 이전 월 데이터 (전월 대비 증감용)
+  const prevData = useMemo(() => {
+    const prevM = selMonth === 1 ? 12 : selMonth - 1
+    const prevY = selMonth === 1 ? selYear - 1 : selYear
+    const found = history.find(h => h.year === prevY && h.month === prevM)
+    if (!found || found.sales_total === 0) return null
+    return { closing: found, calc: calcClosing(found) }
+  }, [history, selYear, selMonth])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
       await upsertMonthlyClosing(fields)
+      getRecentClosings(7).then(setHistory).catch(() => {})
       setToast({ message: '저장되었습니다!', type: 'success' })
     } catch (e) {
       const msg = e instanceof Error ? e.message : '알 수 없는 오류'
@@ -216,9 +307,11 @@ export default function ClosingPage() {
     </div>
   )
 
+  const hasSales = fields.sales_total !== 0
+
   return (
     <div className="min-h-screen bg-gray-50 pb-36">
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      {toast !== null && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* 헤더 */}
       <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
@@ -226,7 +319,6 @@ export default function ClosingPage() {
           <h1 className="text-lg font-bold text-gray-900">가마감</h1>
           <p className="text-xs text-gray-400">손익 예상치 — 단위: 천원</p>
         </div>
-        {/* 월 탭 */}
         <div className="max-w-lg mx-auto flex gap-1 overflow-x-auto pb-2">
           {tabs.map((t) => {
             const active = t.year === selYear && t.month === selMonth
@@ -247,12 +339,99 @@ export default function ClosingPage() {
 
       <div className="px-4 pt-4 max-w-lg mx-auto space-y-3">
 
+        {/* 📊 추세 차트 */}
+        {history.length > 1 ? (
+          <ClosingTrendChart history={history} currentYear={selYear} currentMonth={selMonth} />
+        ) : null}
+
+        {/* 🎯 목표 설정 */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowTarget(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3"
+          >
+            <span className="text-xs font-bold text-gray-400">🎯 목표 설정</span>
+            <span className="text-xs text-gray-400">{showTarget ? '▲ 접기' : '▼ 펼치기'}</span>
+          </button>
+          {showTarget ? (
+            <div className="px-4 pb-4 space-y-3 border-t border-gray-50 pt-3">
+              {/* 목표 매출 */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 w-20 shrink-0">목표 매출</label>
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={target.sales === 0 ? '' : target.sales.toLocaleString('ko-KR')}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/,/g, '')
+                      const n = parseInt(raw, 10)
+                      updateTarget('sales', isNaN(n) ? 0 : n)
+                    }}
+                    placeholder="0"
+                    className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
+                </div>
+              </div>
+              {/* 목표 원가율 */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 w-20 shrink-0">목표 원가율</label>
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    value={target.food_rate === 0 ? '' : target.food_rate}
+                    onChange={e => {
+                      const n = parseFloat(e.target.value)
+                      updateTarget('food_rate', isNaN(n) ? 0 : n)
+                    }}
+                    placeholder="0.0"
+                    className="w-full text-right pr-8 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                </div>
+              </div>
+              {/* 목표 이익률 */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 w-20 shrink-0">목표 이익률</label>
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    value={target.profit_rate === 0 ? '' : target.profit_rate}
+                    onChange={e => {
+                      const n = parseFloat(e.target.value)
+                      updateTarget('profit_rate', isNaN(n) ? 0 : n)
+                    }}
+                    placeholder="0.0"
+                    className="w-full text-right pr-8 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
         {/* 💰 매출 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold text-gray-400">💰 매출</p>
-            {/* 일매출 합산 자동채우기 버튼 */}
-            {dailyTotal !== null && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-xs font-bold text-gray-400">💰 매출</p>
+              <DeltaBadge
+                current={fields.sales_total}
+                prev={prevData?.closing.sales_total}
+                unit="천원"
+              />
+              {target.sales > 0 ? (
+                <AchieveBadge actual={fields.sales_total} target={target.sales} />
+              ) : null}
+            </div>
+            {dailyTotal !== null ? (
               <button
                 type="button"
                 onClick={() => set('sales_total', dailyTotal)}
@@ -260,35 +439,68 @@ export default function ClosingPage() {
               >
                 일매출 합계 적용 ({dailyTotal.toLocaleString()}천원)
               </button>
-            )}
+            ) : null}
           </div>
           <NumInput label="합계" value={fields.sales_total} onChange={(v) => set('sales_total', v)} />
-          {/* 일매출 합계와 다를 때 경고 */}
-          {dailyTotal !== null && fields.sales_total !== 0 && fields.sales_total !== dailyTotal && (
+          {/* 달성률 프로그레스바 */}
+          {target.sales > 0 && fields.sales_total > 0 ? (
+            <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  fields.sales_total >= target.sales ? 'bg-green-500' : 'bg-blue-400'
+                }`}
+                style={{ width: `${Math.min((fields.sales_total / target.sales) * 100, 100)}%` }}
+              />
+            </div>
+          ) : null}
+          {dailyTotal !== null && fields.sales_total !== 0 && fields.sales_total !== dailyTotal ? (
             <p className="mt-2 text-xs text-amber-500 font-medium">
               ⚠ 일매출 합계({dailyTotal.toLocaleString()}천원)와 다릅니다
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* 🥩 식재료비 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs font-bold text-gray-400 mb-3">🥩 식재료비</p>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <p className="text-xs font-bold text-gray-400">🥩 식재료비</p>
+            {hasSales ? (
+              <DeltaBadge
+                current={calc.food_cost_rate}
+                prev={prevData?.calc.food_cost_rate}
+                lowerIsBetter
+              />
+            ) : null}
+            {target.food_rate > 0 && hasSales ? (
+              <span className={`text-xs font-semibold ${targetColor(calc.food_cost_rate, target.food_rate, true)}`}>
+                목표 {target.food_rate}%
+              </span>
+            ) : null}
+          </div>
           <NumInput
             label="금액"
             value={fields.food_cost}
             onChange={(v) => set('food_cost', v)}
-            hint={fields.sales_total !== 0 ? `${calc.food_cost_rate.toFixed(1)}%` : ''}
+            hint={hasSales ? `${calc.food_cost_rate.toFixed(1)}%` : ''}
             hintNeg={calc.food_cost_rate < 0}
           />
           <div className="mt-2 pt-2 border-t border-gray-50">
-            {statCell('원가율', fields.sales_total !== 0 ? `${calc.food_cost_rate.toFixed(1)}%` : '-')}
+            {statCell('원가율', hasSales ? `${calc.food_cost_rate.toFixed(1)}%` : '-')}
           </div>
         </div>
 
         {/* 👤 인건비 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs font-bold text-gray-400 mb-3">👤 인건비</p>
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-xs font-bold text-gray-400">👤 인건비</p>
+            {hasSales ? (
+              <DeltaBadge
+                current={calc.labor_rate}
+                prev={prevData?.calc.labor_rate}
+                lowerIsBetter
+              />
+            ) : null}
+          </div>
           <div className="space-y-2.5">
             <NumInput label="직영" value={fields.labor_direct}   onChange={(v) => set('labor_direct', v)} />
             <NumInput label="파견" value={fields.labor_dispatch} onChange={(v) => set('labor_dispatch', v)} />
@@ -296,28 +508,54 @@ export default function ClosingPage() {
           </div>
           <div className="mt-2 pt-2 border-t border-gray-50 space-y-0.5">
             {statCell('합계', `${calc.labor_total.toLocaleString()}천원`, true)}
-            {statCell('인건비율', fields.sales_total !== 0 ? `${calc.labor_rate.toFixed(1)}%` : '-')}
+            {statCell('인건비율', hasSales ? `${calc.labor_rate.toFixed(1)}%` : '-')}
           </div>
         </div>
 
         {/* 🔧 제조경비 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <p className="text-xs font-bold text-gray-400 mb-3">🔧 제조경비</p>
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-xs font-bold text-gray-400">🔧 제조경비</p>
+            {hasSales ? (
+              <DeltaBadge
+                current={calc.manufacturing_rate}
+                prev={prevData?.calc.manufacturing_rate}
+                lowerIsBetter
+              />
+            ) : null}
+          </div>
           <NumInput
             label="금액"
             value={fields.manufacturing_cost}
             onChange={(v) => set('manufacturing_cost', v)}
-            hint={fields.sales_total !== 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : ''}
+            hint={hasSales ? `${calc.manufacturing_rate.toFixed(1)}%` : ''}
             hintNeg={calc.manufacturing_rate < 0}
           />
           <div className="mt-2 pt-2 border-t border-gray-50">
-            {statCell('경비율', fields.sales_total !== 0 ? `${calc.manufacturing_rate.toFixed(1)}%` : '-')}
+            {statCell('경비율', hasSales ? `${calc.manufacturing_rate.toFixed(1)}%` : '-')}
           </div>
         </div>
 
         {/* 📈 예상이익 (자동계산) */}
         <div className={`rounded-2xl p-4 shadow-sm border ${calc.profit >= 0 ? 'bg-blue-600 border-blue-500' : 'bg-red-500 border-red-400'}`}>
-          <p className="text-xs font-bold text-blue-200 mb-3">📈 예상이익 (자동계산)</p>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <p className="text-xs font-bold text-blue-200">📈 예상이익 (자동계산)</p>
+            {hasSales && prevData ? (
+              <span className={`text-xs font-semibold ${
+                calc.profit_rate >= prevData.calc.profit_rate ? 'text-blue-200' : 'text-red-200'
+              }`}>
+                {calc.profit_rate >= prevData.calc.profit_rate ? '▲' : '▼'}
+                {Math.abs(calc.profit_rate - prevData.calc.profit_rate).toFixed(1)}%p
+              </span>
+            ) : null}
+            {target.profit_rate > 0 && hasSales ? (
+              <span className={`text-xs font-semibold ${
+                calc.profit_rate >= target.profit_rate ? 'text-green-300' : 'text-yellow-300'
+              }`}>
+                목표 {target.profit_rate}%
+              </span>
+            ) : null}
+          </div>
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
               <span className="text-sm text-blue-100">금액</span>
@@ -328,7 +566,7 @@ export default function ClosingPage() {
             <div className="flex justify-between items-center">
               <span className="text-sm text-blue-100">이익률</span>
               <span className="text-base font-bold text-white">
-                {fields.sales_total !== 0 ? `${calc.profit_rate.toFixed(1)}%` : '-'}
+                {hasSales ? `${calc.profit_rate.toFixed(1)}%` : '-'}
               </span>
             </div>
           </div>

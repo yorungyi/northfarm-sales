@@ -83,3 +83,15 @@ export async function upsertMonthlyClosing(
     )
   if (error) throw error
 }
+
+/** 최근 N개월 가마감 조회 (오래된 순) */
+export async function getRecentClosings(count: number): Promise<MonthlyClosing[]> {
+  const { data, error } = await supabase
+    .from('monthly_closing')
+    .select('*')
+    .order('year', { ascending: false })
+    .order('month', { ascending: false })
+    .limit(count)
+  if (error) throw error
+  return ((data ?? []) as MonthlyClosing[]).reverse()
+}

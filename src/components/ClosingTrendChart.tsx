@@ -1,0 +1,132 @@
+import { useMemo } from 'react'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Tooltip,
+  Legend,
+} from 'chart.js'
+import { Chart } from 'react-chartjs-2'
+import type { MonthlyClosing } from '../types/closing'
+import { calcClosing } from '../types/closing'
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip, Legend)
+
+// chart.js tick/tooltip 콜백은 any 타입 — 라이브러리 제약
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+interface Props {
+  history: MonthlyClosing[]
+  currentYear: number
+  currentMonth: number
+}
+
+const OPTIONS = {
+  responsive: true,
+  interaction: { mode: 'index' as const, intersect: false },
+  plugins: {
+    legend: {
+      position: 'bottom' as const,
+      labels: { font: { size: 11 }, boxWidth: 12, padding: 12 },
+    },
+    tooltip: {
+      callbacks: {
+        label: (ctx: any) => {
+          if (ctx.raw === null || ctx.raw === undefined) return ''
+          if (ctx.datasetIndex === 0) return ` 매출: ${Number(ctx.raw).toLocaleString()}천원`
+          if (ctx.datasetIndex === 1) return ` 원가율: ${Number(ctx.raw).toFixed(1)}%`
+          return ` 이익률: ${Number(ctx.raw).toFixed(1)}%`
+        },
+      },
+    },
+  },
+  scales: {
+    y: {
+      type: 'linear' as const,
+      position: 'left' as const,
+      ticks: {
+        callback: (v: any) => Number(v).toLocaleString(),
+        font: { size: 10 },
+        maxTicksLimit: 5,
+      },
+      grid: { color: 'rgba(0,0,0,0.05)' },
+    },
+    y2: {
+      type: 'linear' as const,
+      position: 'right' as const,
+      ticks: {
+        callback: (v: any) => `${v}%`,
+        font: { size: 10 },
+        maxTicksLimit: 5,
+      },
+      grid: { drawOnChartArea: false },
+    },
+  },
+}
+
+export default function ClosingTrendChart({ history, currentYear, currentMonth }: Props) {
+  const chartData = useMemo(() => {
+    const labels = history.map(
+      h => `${h.year !== currentYear ? `${h.year % 100}년 ` : ''}${h.month}월`
+    )
+    const salesData   = history.map(h => h.sales_total)
+    const foodRates   = history.map(h => h.sales_total > 0 ? calcClosing(h).food_cost_rate : null)
+    const profitRates = history.map(h => h.sales_total > 0 ? calcClosing(h).profit_rate    : null)
+    const bgColors    = history.map(h =>
+      h.year === currentYear && h.month === currentMonth
+        ? 'rgba(59, 130, 246, 0.85)'
+        : 'rgba(59, 130, 246, 0.3)'
+    )
+
+    return {
+      labels,
+      datasets: [
+        {
+          type: 'bar' as const,
+          label: '매출(천원)',
+          data: salesData,
+          backgroundColor: bgColors,
+          yAxisID: 'y',
+          borderRadius: 5,
+          order: 2,
+        },
+        {
+          type: 'line' as const,
+          label: '원가율(%)',
+          data: foodRates,
+          borderColor: '#F59E0B',
+          backgroundColor: 'transparent',
+          yAxisID: 'y2',
+          tension: 0.3,
+          pointRadius: 4,
+          pointBackgroundColor: '#F59E0B',
+          spanGaps: true,
+          order: 1,
+        },
+        {
+          type: 'line' as const,
+          label: '이익률(%)',
+          data: profitRates,
+          borderColor: '#10B981',
+          backgroundColor: 'transparent',
+          yAxisID: 'y2',
+          tension: 0.3,
+          pointRadius: 4,
+          pointBackgroundColor: '#10B981',
+          spanGaps: true,
+          order: 1,
+        },
+      ],
+    }
+  }, [history, currentYear, currentMonth])
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+      <p className="text-xs font-bold text-gray-400 mb-3">📊 추세 분석</p>
+      <Chart type="bar" data={chartData as any} options={OPTIONS} />
+    </div>
+  )
+}
