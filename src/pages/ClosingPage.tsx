@@ -211,6 +211,34 @@ function targetColor(actual: number, goal: number, lowerIsBetter = false) {
   return good ? 'text-green-600' : 'text-red-500'
 }
 
+// ── 목표 대비 아이콘 뱃지 (비용항목: lowerIsBetter=true) ────
+function TargetCompareBadge({
+  actual,
+  target,
+  lowerIsBetter = false,
+}: {
+  actual: number
+  target: number
+  lowerIsBetter?: boolean
+}) {
+  if (target <= 0 || actual <= 0) return null
+  const diff = actual - target
+  const good = lowerIsBetter ? diff <= 0 : diff >= 0
+  const absDiff = Math.abs(Math.round(diff)).toLocaleString('ko-KR')
+  const icon = good ? '✅' : '⚠️'
+  const label = good
+    ? lowerIsBetter ? `${absDiff}천 절감` : `${absDiff}천 초과달성`
+    : lowerIsBetter ? `${absDiff}천 초과` : `${absDiff}천 미달`
+  const cls = good
+    ? 'text-green-600 bg-green-50 border-green-200'
+    : 'text-red-600 bg-red-50 border-red-200'
+  return (
+    <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${cls}`}>
+      {icon} {label}
+    </span>
+  )
+}
+
 // ── 메인 컴포넌트 ───────────────────────────────────────────
 type Fields = Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>
 
@@ -526,6 +554,7 @@ export default function ClosingPage() {
               {target.sales > 0 ? (
                 <AchieveBadge actual={fields.sales_total} target={target.sales} />
               ) : null}
+              <TargetCompareBadge actual={fields.sales_total} target={target.sales} />
             </div>
             {dailyTotal !== null ? (
               <button
@@ -568,11 +597,7 @@ export default function ClosingPage() {
                 lowerIsBetter
               />
             ) : null}
-            {target.food_cost > 0 ? (
-              <span className={`text-xs font-semibold ${targetColor(fields.food_cost, target.food_cost, true)}`}>
-                목표 {target.food_cost.toLocaleString()}천원
-              </span>
-            ) : null}
+            <TargetCompareBadge actual={fields.food_cost} target={target.food_cost} lowerIsBetter />
           </div>
           <NumInput
             label="금액"
@@ -588,7 +613,7 @@ export default function ClosingPage() {
 
         {/* 👤 인건비 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <p className="text-xs font-bold text-gray-400">👤 인건비</p>
             {hasSales ? (
               <DeltaBadge
@@ -597,6 +622,7 @@ export default function ClosingPage() {
                 lowerIsBetter
               />
             ) : null}
+            <TargetCompareBadge actual={calc.labor_total} target={target.labor} lowerIsBetter />
           </div>
           <div className="space-y-2.5">
             <NumInput label="직영" value={fields.labor_direct}   onChange={(v) => set('labor_direct', v)} />
@@ -611,7 +637,7 @@ export default function ClosingPage() {
 
         {/* 🔧 제조경비 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <p className="text-xs font-bold text-gray-400">🔧 제조경비</p>
             {hasSales ? (
               <DeltaBadge
@@ -620,6 +646,7 @@ export default function ClosingPage() {
                 lowerIsBetter
               />
             ) : null}
+            <TargetCompareBadge actual={fields.manufacturing_cost} target={target.manufacturing} lowerIsBetter />
           </div>
           <NumInput
             label="금액"
