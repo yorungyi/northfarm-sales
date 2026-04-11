@@ -9,11 +9,12 @@ export async function upsertSales(
   venue: Venue,
   foodSales: number,
   storeSales: number,
+  guestCount: number = 0,
 ): Promise<void> {
   const { error } = await supabase
     .from('daily_sales')
     .upsert(
-      { sale_date: date, venue, food_sales: foodSales, store_sales: storeSales },
+      { sale_date: date, venue, food_sales: foodSales, store_sales: storeSales, guest_count: guestCount },
       { onConflict: 'sale_date,venue' },
     )
   if (error) throw error

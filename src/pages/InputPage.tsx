@@ -11,7 +11,7 @@ import Toast from '../components/Toast'
 
 export default function InputPage() {
   const [searchParams] = useSearchParams()
-  const { selectedDate, setSelectedDate, inputs, setInput, resetInputs } = useSalesStore()
+  const { selectedDate, setSelectedDate, inputs, setInput, resetInputs, guestCounts, setGuestCount, resetGuestCounts } = useSalesStore()
 
   const [prevDayMap, setPrevDayMap] = useState<Partial<Record<Venue, DailySales>>>({})
   const [saving, setSaving] = useState(false)
@@ -52,11 +52,13 @@ export default function InputPage() {
   useEffect(() => {
     getSalesByDate(selectedDate).then((rows) => {
       resetInputs()
+      resetGuestCounts()
       for (const row of rows) {
         setInput(row.venue as Venue, row.food_sales + row.store_sales)
+        setGuestCount(row.venue as Venue, row.guest_count ?? 0)
       }
     }).catch(() => {})
-  }, [selectedDate, resetInputs, setInput])
+  }, [selectedDate, resetInputs, setInput, resetGuestCounts, setGuestCount])
 
   // 날짜 변경 시 메모 localStorage에서 로드
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function InputPage() {
     try {
       await Promise.all(
         VENUES.map((venue) =>
-          upsertSales(selectedDate, venue, inputs[venue], 0)
+          upsertSales(selectedDate, venue, inputs[venue], 0, guestCounts[venue])
         )
       )
       // 메모 localStorage 저장
@@ -98,7 +100,7 @@ export default function InputPage() {
     } finally {
       setSaving(false)
     }
-  }, [isOnline, selectedDate, inputs, memos])
+  }, [isOnline, selectedDate, inputs, guestCounts, memos])
 
   return (
     <div className="min-h-screen bg-gray-50 pb-36">
@@ -135,9 +137,11 @@ export default function InputPage() {
             key={venue}
             venue={venue}
             netSales={inputs[venue]}
+            guestCount={guestCounts[venue]}
             prevDaySales={prevDayMap[venue] ?? null}
             memo={memos[venue]}
             onChange={(value) => setInput(venue, value)}
+            onGuestCountChange={(count) => setGuestCount(venue, count)}
             onMemoChange={(m) => setMemos((prev) => ({ ...prev, [venue]: m }))}
           />
         ))}
