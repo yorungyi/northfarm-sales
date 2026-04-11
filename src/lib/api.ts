@@ -101,14 +101,15 @@ export interface ClosingTargetRow {
   month: number
   sales_target: number
   food_cost_target: number
-  profit_target: number
+  labor_target: number
+  manufacturing_target: number
 }
 
 /** 목표 단건 조회 */
 export async function getClosingTarget(year: number, month: number): Promise<ClosingTargetRow | null> {
   const { data, error } = await supabase
     .from('closing_target')
-    .select('year,month,sales_target,food_cost_target,profit_target')
+    .select('year,month,sales_target,food_cost_target,labor_target,manufacturing_target')
     .eq('year', year)
     .eq('month', month)
     .maybeSingle()

@@ -140,11 +140,24 @@ function buildKakaoText(
 // ── 목표 관리 ───────────────────────────────────────────────
 interface ClosingTarget {
   sales: number
-  food_cost: number   // 목표 식재비 (천원)
-  profit: number      // 목표 이익 (천원)
+  food_cost: number        // 목표 식재비 (천원)
+  labor: number            // 목표 인건비 (천원)
+  manufacturing: number    // 목표 제조경비 (천원)
+  // profit은 자동계산: sales - food_cost - labor - manufacturing
 }
 
-const DEFAULT_TARGET: ClosingTarget = { sales: 0, food_cost: 0, profit: 0 }
+const DEFAULT_TARGET: ClosingTarget = { sales: 0, food_cost: 0, labor: 0, manufacturing: 0 }
+
+/** 목표이익 자동계산 */
+function calcTargetProfit(t: ClosingTarget): number {
+  return t.sales - t.food_cost - t.labor - t.manufacturing
+}
+
+/** 목표이익률 자동계산 */
+function calcTargetProfitRate(t: ClosingTarget): number {
+  if (t.sales === 0) return 0
+  return Math.round((calcTargetProfit(t) / t.sales) * 1000) / 10
+}
 
 /** localStorage 마이그레이션용 읽기 전용 */
 function loadTargetFromLS(year: number, month: number): ClosingTarget {
@@ -266,18 +279,20 @@ export default function ClosingPage() {
         setTarget({
           sales: savedTarget.sales_target,
           food_cost: savedTarget.food_cost_target,
-          profit: savedTarget.profit_target,
+          labor: savedTarget.labor_target,
+          manufacturing: savedTarget.manufacturing_target,
         })
       } else {
         // localStorage 마이그레이션: 기존 데이터가 있으면 Supabase로 이전
         const lsTarget = loadTargetFromLS(selYear, selMonth)
-        if (lsTarget.sales > 0 || lsTarget.food_cost > 0 || lsTarget.profit > 0) {
+        if (lsTarget.sales > 0 || lsTarget.food_cost > 0) {
           setTarget(lsTarget)
           upsertClosingTarget({
             year: selYear, month: selMonth,
             sales_target: lsTarget.sales,
             food_cost_target: lsTarget.food_cost,
-            profit_target: lsTarget.profit,
+            labor_target: lsTarget.labor,
+            manufacturing_target: lsTarget.manufacturing,
           }).catch(e => console.error('목표 마이그레이션 실패', e))
         }
       }
@@ -295,7 +310,8 @@ export default function ClosingPage() {
         year: selYear, month: selMonth,
         sales_target: next.sales,
         food_cost_target: next.food_cost,
-        profit_target: next.profit,
+        labor_target: next.labor,
+        manufacturing_target: next.manufacturing,
       }).catch(e => console.error('목표 저장 실패', e))
       return next
     })
@@ -400,7 +416,7 @@ export default function ClosingPage() {
             <div className="px-4 pb-4 space-y-3 border-t border-gray-50 pt-3">
               {/* 목표 매출 */}
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-20 shrink-0">목표 매출</label>
+                <label className="text-sm text-gray-600 w-24 shrink-0">목표 매출</label>
                 <div className="relative flex-1">
                   <input
                     type="text"
@@ -419,7 +435,7 @@ export default function ClosingPage() {
               </div>
               {/* 목표 식재비 */}
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-20 shrink-0">목표 식재비</label>
+                <label className="text-sm text-gray-600 w-24 shrink-0">목표 식재비</label>
                 <div className="relative flex-1">
                   <input
                     type="text"
@@ -436,18 +452,18 @@ export default function ClosingPage() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
                 </div>
               </div>
-              {/* 목표 이익 */}
+              {/* 목표 인건비 */}
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-20 shrink-0">목표 이익</label>
+                <label className="text-sm text-gray-600 w-24 shrink-0">목표 인건비</label>
                 <div className="relative flex-1">
                   <input
                     type="text"
                     inputMode="numeric"
-                    value={target.profit === 0 ? '' : target.profit.toLocaleString('ko-KR')}
+                    value={target.labor === 0 ? '' : target.labor.toLocaleString('ko-KR')}
                     onChange={e => {
                       const raw = e.target.value.replace(/,/g, '')
                       const n = parseInt(raw, 10)
-                      updateTarget('profit', isNaN(n) ? 0 : n)
+                      updateTarget('labor', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
                     className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
@@ -455,6 +471,44 @@ export default function ClosingPage() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
                 </div>
               </div>
+              {/* 목표 제조경비 */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600 w-24 shrink-0">목표 제조경비</label>
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={target.manufacturing === 0 ? '' : target.manufacturing.toLocaleString('ko-KR')}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/,/g, '')
+                      const n = parseInt(raw, 10)
+                      updateTarget('manufacturing', isNaN(n) ? 0 : n)
+                    }}
+                    placeholder="0"
+                    className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
+                </div>
+              </div>
+              {/* 목표 이익 — 자동계산 */}
+              {target.sales > 0 ? (() => {
+                const tProfit = calcTargetProfit(target)
+                const tProfitRate = calcTargetProfitRate(target)
+                const isPositive = tProfit >= 0
+                return (
+                  <div className={`flex items-center justify-between rounded-xl px-3 py-2.5 ${isPositive ? 'bg-blue-50 border border-blue-100' : 'bg-red-50 border border-red-100'}`}>
+                    <span className="text-sm font-semibold text-gray-600">목표 이익 (자동)</span>
+                    <div className="text-right">
+                      <span className={`text-sm font-bold ${isPositive ? 'text-blue-600' : 'text-red-500'}`}>
+                        {tProfit.toLocaleString('ko-KR')}천원
+                      </span>
+                      <span className={`ml-2 text-xs font-semibold ${isPositive ? 'text-blue-400' : 'text-red-400'}`}>
+                        ({tProfitRate.toFixed(1)}%)
+                      </span>
+                    </div>
+                  </div>
+                )
+              })() : null}
             </div>
           ) : null}
         </div>
@@ -591,13 +645,16 @@ export default function ClosingPage() {
                 {Math.abs(calc.profit_rate - prevData.calc.profit_rate).toFixed(1)}%p
               </span>
             ) : null}
-            {target.profit > 0 ? (
-              <span className={`text-xs font-semibold ${
-                calc.profit >= target.profit ? 'text-green-300' : 'text-yellow-300'
-              }`}>
-                목표 {target.profit.toLocaleString()}천원
-              </span>
-            ) : null}
+            {target.sales > 0 ? (() => {
+              const tProfit = calcTargetProfit(target)
+              const tProfitRate = calcTargetProfitRate(target)
+              const achieved = calc.profit >= tProfit
+              return (
+                <span className={`text-xs font-semibold ${achieved ? 'text-green-300' : 'text-yellow-300'}`}>
+                  목표 {tProfit.toLocaleString()}천원 ({tProfitRate.toFixed(1)}%)
+                </span>
+              )
+            })() : null}
           </div>
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
