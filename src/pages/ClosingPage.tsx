@@ -204,13 +204,6 @@ function AchieveBadge({ actual, target }: { actual: number; target: number }) {
   )
 }
 
-// ── 목표 대비 색상 ──────────────────────────────────────────
-function targetColor(actual: number, goal: number, lowerIsBetter = false) {
-  if (goal <= 0 || actual <= 0) return 'text-gray-400'
-  const good = lowerIsBetter ? actual <= goal : actual >= goal
-  return good ? 'text-green-600' : 'text-red-500'
-}
-
 // ── 목표 대비 아이콘 뱃지 (비용항목: lowerIsBetter=true) ────
 function TargetCompareBadge({
   actual,
