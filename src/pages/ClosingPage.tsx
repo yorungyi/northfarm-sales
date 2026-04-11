@@ -98,7 +98,7 @@ function buildKakaoText(
     ``,
     `🥩 식재료비`,
     `  ▸ ${pad('금  액')}     ${n(d.food_cost)}천원`,
-    `  ▸ ${pad('원가율')} ➜      ${p(c.food_cost_rate)}%`,
+    `  ▸ ${pad('식재비율')} ➜      ${p(c.food_cost_rate)}%`,
     ``,
     `👤 인건비`,
     `  ▸ ${pad('직영')}       ${n(d.labor_direct)}천원`,
@@ -216,9 +216,9 @@ export default function ClosingPage() {
 
   const tabs = getRecentMonths(6)
 
-  // 최근 7개월 가마감 초기 로드
+  // 최근 14개월 가마감 초기 로드 (전년 동기 비교용)
   useEffect(() => {
-    getRecentClosings(7).then(setHistory).catch(() => {})
+    getRecentClosings(14).then(setHistory).catch(() => {})
   }, [])
 
   // 탭 전환 시 데이터 + 목표 로드
@@ -274,7 +274,7 @@ export default function ClosingPage() {
     setSaving(true)
     try {
       await upsertMonthlyClosing(fields)
-      getRecentClosings(7).then(setHistory).catch(() => {})
+      getRecentClosings(14).then(setHistory).catch(() => {})
       setToast({ message: '저장되었습니다!', type: 'success' })
     } catch (e) {
       const msg = e instanceof Error ? e.message : '알 수 없는 오류'
@@ -570,6 +570,14 @@ export default function ClosingPage() {
                 {hasSales ? `${calc.profit_rate.toFixed(1)}%` : '-'}
               </span>
             </div>
+            {hasSales ? (
+              <div className="flex justify-between items-center pt-1 border-t border-blue-500">
+                <span className="text-xs text-blue-200">Prime Cost (식재비+인건비)</span>
+                <span className={`text-sm font-bold ${calc.prime_cost_rate > 65 ? 'text-yellow-300' : 'text-green-300'}`}>
+                  {calc.prime_cost_rate.toFixed(1)}%{calc.prime_cost_rate > 65 ? ' ⚠' : ''}
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
 
