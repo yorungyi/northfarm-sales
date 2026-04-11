@@ -11,7 +11,7 @@ import Toast from '../components/Toast'
 
 export default function InputPage() {
   const [searchParams] = useSearchParams()
-  const { selectedDate, setSelectedDate, inputs, setInput, resetInputs, guestCounts, setGuestCount, resetGuestCounts } = useSalesStore()
+  const { selectedDate, setSelectedDate, inputs, setInput, resetInputs } = useSalesStore()
 
   const [prevDayMap, setPrevDayMap] = useState<Partial<Record<Venue, DailySales>>>({})
   const [saving, setSaving] = useState(false)
@@ -20,6 +20,8 @@ export default function InputPage() {
   const [memos, setMemos] = useState<Record<Venue, string>>({
     [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
   })
+  // 일별 내장객 수 (업장 구분 없이 하루 1개)
+  const [guestCount, setGuestCountState] = useState(0)
 
   useEffect(() => {
     const dateParam = searchParams.get('date')
@@ -52,15 +54,13 @@ export default function InputPage() {
   useEffect(() => {
     getSalesByDate(selectedDate).then((rows) => {
       resetInputs()
-      resetGuestCounts()
       for (const row of rows) {
         setInput(row.venue as Venue, row.food_sales + row.store_sales)
-        setGuestCount(row.venue as Venue, row.guest_count ?? 0)
       }
     }).catch(() => {})
-  }, [selectedDate, resetInputs, setInput, resetGuestCounts, setGuestCount])
+  }, [selectedDate, resetInputs, setInput])
 
-  // 날짜 변경 시 메모 localStorage에서 로드
+  // 날짜 변경 시 메모·내장객 수 localStorage에서 로드
   useEffect(() => {
     const loaded: Record<Venue, string> = {
       [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
@@ -69,9 +69,17 @@ export default function InputPage() {
       loaded[v] = localStorage.getItem(`northfarm_memo_${selectedDate}_${v}`) ?? ''
     }
     setMemos(loaded)
+
+    const savedGuest = localStorage.getItem(`northfarm_guest_${selectedDate}`)
+    setGuestCountState(savedGuest ? Number(savedGuest) : 0)
   }, [selectedDate])
 
   const total = VENUES.reduce((sum, v) => sum + inputs[v], 0)
+
+  function handleGuestCountChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const raw = e.target.value.replace(/\D/g, '')
+    setGuestCountState(raw === '' ? 0 : Number(raw))
+  }
 
   const handleSave = useCallback(async () => {
     if (!isOnline) {
@@ -82,10 +90,10 @@ export default function InputPage() {
     try {
       await Promise.all(
         VENUES.map((venue) =>
-          upsertSales(selectedDate, venue, inputs[venue], 0, guestCounts[venue])
+          upsertSales(selectedDate, venue, inputs[venue], 0)
         )
       )
-      // 메모 localStorage 저장
+      // 메모·내장객 수 localStorage 저장
       for (const v of VENUES) {
         const key = `northfarm_memo_${selectedDate}_${v}`
         if (memos[v].trim()) {
@@ -94,13 +102,18 @@ export default function InputPage() {
           localStorage.removeItem(key)
         }
       }
+      if (guestCount > 0) {
+        localStorage.setItem(`northfarm_guest_${selectedDate}`, String(guestCount))
+      } else {
+        localStorage.removeItem(`northfarm_guest_${selectedDate}`)
+      }
       setToast({ message: '저장되었습니다!', type: 'success' })
     } catch {
       setToast({ message: '저장에 실패했습니다. 다시 시도해주세요.', type: 'error' })
     } finally {
       setSaving(false)
     }
-  }, [isOnline, selectedDate, inputs, guestCounts, memos])
+  }, [isOnline, selectedDate, inputs, guestCount, memos])
 
   return (
     <div className="min-h-screen bg-gray-50 pb-36">
@@ -122,11 +135,28 @@ export default function InputPage() {
         </div>
       </header>
 
-      {/* 합계 카드 */}
+      {/* 합계 카드 + 내장객 수 */}
       <div className="px-4 pt-4 max-w-lg mx-auto">
-        <div className="bg-blue-600 rounded-2xl p-4 text-white text-center shadow">
-          <p className="text-sm text-blue-200">전체 순매출</p>
-          <p className="text-2xl font-bold mt-1">{formatCurrency(total)}</p>
+        <div className="bg-blue-600 rounded-2xl p-4 text-white shadow">
+          <div className="text-center">
+            <p className="text-sm text-blue-200">전체 순매출</p>
+            <p className="text-2xl font-bold mt-1">{formatCurrency(total)}</p>
+          </div>
+          {/* 내장객 수 입력 */}
+          <div className="mt-3 pt-3 border-t border-blue-500 flex items-center gap-3">
+            <span className="text-sm text-blue-200 whitespace-nowrap">내장객</span>
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={guestCount === 0 ? '' : String(guestCount)}
+                onChange={handleGuestCountChange}
+                placeholder="0"
+                className="w-full text-right pr-7 py-1.5 px-3 rounded-lg bg-blue-500 text-white placeholder-blue-300 text-base font-bold focus:outline-none focus:ring-1 focus:ring-blue-300"
+              />
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-blue-300">명</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -137,11 +167,9 @@ export default function InputPage() {
             key={venue}
             venue={venue}
             netSales={inputs[venue]}
-            guestCount={guestCounts[venue]}
             prevDaySales={prevDayMap[venue] ?? null}
             memo={memos[venue]}
             onChange={(value) => setInput(venue, value)}
-            onGuestCountChange={(count) => setGuestCount(venue, count)}
             onMemoChange={(m) => setMemos((prev) => ({ ...prev, [venue]: m }))}
           />
         ))}

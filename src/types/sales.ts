@@ -21,6 +21,5 @@ export interface DailySales {
   food_sales: number
   store_sales: number
   total_sales: number      // generated: food_sales + store_sales
-  guest_count: number      // 내장객 수
   created_at: string
 }

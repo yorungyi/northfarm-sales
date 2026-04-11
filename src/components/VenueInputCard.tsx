@@ -6,22 +6,18 @@ import { formatNumber, parseNumber, formatCurrency } from '../utils/format'
 interface VenueInputCardProps {
   venue: Venue
   netSales: number
-  guestCount: number
   prevDaySales: DailySales | null
   memo: string
   onChange: (value: number) => void
-  onGuestCountChange: (count: number) => void
   onMemoChange: (memo: string) => void
 }
 
 export default function VenueInputCard({
   venue,
   netSales,
-  guestCount,
   prevDaySales,
   memo,
   onChange,
-  onGuestCountChange,
   onMemoChange,
 }: VenueInputCardProps) {
   const [display, setDisplay] = useState(formatNumber(netSales))
@@ -38,28 +34,16 @@ export default function VenueInputCard({
     }
   }
 
-  function handleGuestCountChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const raw = e.target.value.replace(/\D/g, '')
-    onGuestCountChange(raw === '' ? 0 : Number(raw))
-  }
-
   const prevNet = prevDaySales ? prevDaySales.food_sales + prevDaySales.store_sales : null
-  const prevGuest = prevDaySales?.guest_count ?? null
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-gray-800 text-base">{venue}</h3>
-        <div className="flex items-center gap-3">
-          {prevGuest !== null && prevGuest > 0 && (
-            <span className="text-xs text-gray-400">전일 {prevGuest}명</span>
-          )}
-          {prevNet !== null && (
-            <span className="text-xs text-gray-400">전일 {formatCurrency(prevNet)}</span>
-          )}
-        </div>
+        {prevNet !== null && (
+          <span className="text-xs text-gray-400">전일 {formatCurrency(prevNet)}</span>
+        )}
       </div>
-      {/* 순매출 입력 */}
       <div className="relative">
         <input
           type="text"
@@ -70,18 +54,6 @@ export default function VenueInputCard({
           className="w-full text-right pr-7 py-3 px-4 rounded-xl border border-gray-200 text-lg font-bold text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
         />
         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">원</span>
-      </div>
-      {/* 내장객 수 입력 */}
-      <div className="relative mt-2">
-        <input
-          type="text"
-          inputMode="numeric"
-          value={guestCount === 0 ? '' : String(guestCount)}
-          onChange={handleGuestCountChange}
-          placeholder="내장객 수"
-          className="w-full text-right pr-7 py-2 px-4 rounded-xl border border-gray-200 text-base font-medium text-gray-700 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-        />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">명</span>
       </div>
       {/* 비고 입력 */}
       <input
