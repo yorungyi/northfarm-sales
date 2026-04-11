@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { calcClosing } from '../types/closing'
 import type { MonthlyClosing } from '../types/closing'
 import {
@@ -81,60 +81,122 @@ function NumInput({
 }
 
 // ── 카카오 보고 텍스트 생성 ─────────────────────────────────
-type PrevSnapshot = { closing: MonthlyClosing; calc: ReturnType<typeof calcClosing> } | null
-
 function buildKakaoText(
   year: number, month: number,
   d: Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>,
-  prev: PrevSnapshot,
+  target: ClosingTarget,
 ): string {
   const c = calcClosing(d)
   const n = (v: number) => v.toLocaleString('ko-KR')
   const p = (v: number) => v.toFixed(1)
-  const pad = (s: string, len = 7) => s.padEnd(len, '\u3000')
+  const hasTarget = target.sales > 0
 
-  function delta(current: number, prevVal: number | undefined, isRate = false, lowerIsBetter = false): string {
-    if (prevVal === undefined || prevVal === 0) return ''
-    const diff = current - prevVal
-    if (Math.abs(diff) < (isRate ? 0.05 : 1)) return ''
-    const improved = lowerIsBetter ? diff < 0 : diff > 0
-    const sign = diff > 0 ? '▲' : '▼'
-    const abs = isRate ? Math.abs(diff).toFixed(1) : Math.abs(Math.round(diff)).toLocaleString('ko-KR')
-    const unit = isRate ? '%p' : '천원'
-    return ` (전월比 ${sign}${abs}${unit}${improved ? '↑' : '↓'})`
+  // 목표대비 상태 문자열
+  function tgtStatus(actual: number, tgt: number, lowerIsBetter: boolean): string {
+    if (tgt <= 0 || actual <= 0) return ''
+    const diff = actual - tgt
+    const good = lowerIsBetter ? diff <= 0 : diff >= 0
+    const rate = (actual / tgt) * 100
+    const absDiff = Math.abs(Math.round(diff)).toLocaleString('ko-KR')
+    const icon = good ? '✅' : (rate >= 80 ? '⚠️' : '🔴')
+    const label = good
+      ? lowerIsBetter ? `${absDiff}천 절감` : `${absDiff}천 초과달성`
+      : lowerIsBetter ? `${absDiff}천 초과` : `${absDiff}천 미달`
+    return `${icon} ${label} (${rate.toFixed(1)}%)`
   }
 
-  const pc = prev?.calc
-  const pd = prev?.closing
+  // 종합 평가 — 이익 달성 여부 기준
+  function overallStatus(): string {
+    const tProfit = calcTargetProfit(target)
+    if (tProfit <= 0) return ''
+    const st = tgtStatus(c.profit, tProfit, false)
+    if (st.startsWith('✅')) return '✅ 이익 목표 달성'
+    if (st.startsWith('⚠️')) return '⚠️ 이익 목표 근접 (주의)'
+    return '🔴 이익 목표 미달'
+  }
 
-  return [
-    `📊 [노스팜CC] 손익보고`,
+  const tProfit = calcTargetProfit(target)
+  const tProfitRate = calcTargetProfitRate(target)
+
+  const rows: string[] = [
+    `📊 [노스팜CC 식음팀] 가마감 손익보고`,
     `━━━━━━━━━━━━━━━━━━━━━`,
-    `📅 ${year}년 ${String(month).padStart(2, '0')}월 기준 예상치`,
+    `📅 ${year}년 ${String(month).padStart(2, '0')}월 기준 (예상치)`,
     ``,
-    `💰 매출`,
-    `  ▸ ${pad('합  계')} ➜  ${n(d.sales_total)}천원${delta(d.sales_total, pd?.sales_total)}`,
-    ``,
-    `🥩 식재료비`,
-    `  ▸ ${pad('금  액')}     ${n(d.food_cost)}천원`,
-    `  ▸ ${pad('식재비율')} ➜      ${p(c.food_cost_rate)}%${delta(c.food_cost_rate, pc?.food_cost_rate, true, true)}`,
-    ``,
-    `👤 인건비`,
-    `  ▸ ${pad('직영')}       ${n(d.labor_direct)}천원`,
-    `  ▸ ${pad('파견')}       ${n(d.labor_dispatch)}천원`,
-    `  ▸ ${pad('지원')}       ${n(d.labor_support)}천원`,
-    `  ▸ ${pad('합  계')} ➜  ${n(c.labor_total)}천원${delta(c.labor_total, pc?.labor_total)}`,
-    `  ▸ ${pad('인건비율')} ➜     ${p(c.labor_rate)}%${delta(c.labor_rate, pc?.labor_rate, true, true)}`,
-    ``,
-    `🔧 제조경비`,
-    `  ▸ ${pad('금  액')} ➜  ${n(d.manufacturing_cost)}천원`,
-    `  ▸ ${pad('경비율')} ➜      ${p(c.manufacturing_rate)}%${delta(c.manufacturing_rate, pc?.manufacturing_rate, true, true)}`,
-    ``,
-    `📈 예상이익`,
-    `  ▸ ${pad('금  액')} ➜  ${n(c.profit)}천원${delta(c.profit, pc?.profit)}`,
-    `  ▸ ${pad('이익률')}  ➜      ${p(c.profit_rate)}%${delta(c.profit_rate, pc?.profit_rate, true)}`,
-    `  ▸ ${pad('Prime Cost')} ➜  ${p(c.prime_cost_rate)}%${delta(c.prime_cost_rate, pc?.prime_cost_rate, true, true)}`,
-  ].join('\n')
+    `▣ 핵심 요약`,
+    `  • 영업이익    ${n(c.profit)}천원 (이익률 ${p(c.profit_rate)}%)`,
+    `  • Prime Cost  ${p(c.prime_cost_rate)}% (식재비+인건비)`,
+  ]
+  if (hasTarget) rows.push(`  • 종합평가    ${overallStatus()}`)
+
+  rows.push(``, `━━━━━━━━━━━━━━━━━━━━━`)
+
+  // 💰 매출
+  rows.push(`💰 매출`)
+  if (hasTarget) rows.push(`  목  표   ${n(target.sales)}천원`)
+  rows.push(`  실  적   ${n(d.sales_total)}천원`)
+  if (hasTarget) {
+    const st = tgtStatus(d.sales_total, target.sales, false)
+    if (st) rows.push(`  달성현황  ${st}`)
+  }
+
+  rows.push(``)
+
+  // 🥩 식재료비
+  rows.push(`🥩 식재료비`)
+  if (hasTarget) {
+    const tRate = (target.food_cost / target.sales * 100).toFixed(1)
+    rows.push(`  목  표   ${n(target.food_cost)}천원 (목표율 ${tRate}%)`)
+  }
+  rows.push(`  실  적   ${n(d.food_cost)}천원 (원가율 ${p(c.food_cost_rate)}%)`)
+  if (hasTarget) {
+    const st = tgtStatus(d.food_cost, target.food_cost, true)
+    if (st) rows.push(`  달성현황  ${st}`)
+  }
+
+  rows.push(``)
+
+  // 👤 인건비
+  rows.push(`👤 인건비`)
+  if (hasTarget) rows.push(`  목  표   ${n(target.labor)}천원`)
+  rows.push(`  실  적   ${n(c.labor_total)}천원 (인건비율 ${p(c.labor_rate)}%)`)
+  rows.push(`    └ 직영 ${n(d.labor_direct)} / 파견 ${n(d.labor_dispatch)} / 지원 ${n(d.labor_support)}`)
+  if (hasTarget) {
+    const st = tgtStatus(c.labor_total, target.labor, true)
+    if (st) rows.push(`  달성현황  ${st}`)
+  }
+
+  rows.push(``)
+
+  // 🔧 제조경비
+  rows.push(`🔧 제조경비`)
+  if (hasTarget) {
+    const tRate = (target.manufacturing / target.sales * 100).toFixed(1)
+    rows.push(`  목  표   ${n(target.manufacturing)}천원 (목표율 ${tRate}%)`)
+  }
+  rows.push(`  실  적   ${n(d.manufacturing_cost)}천원 (경비율 ${p(c.manufacturing_rate)}%)`)
+  if (hasTarget) {
+    const st = tgtStatus(d.manufacturing_cost, target.manufacturing, true)
+    if (st) rows.push(`  달성현황  ${st}`)
+  }
+
+  rows.push(``, `━━━━━━━━━━━━━━━━━━━━━`)
+
+  // 📈 예상이익
+  rows.push(`📈 예상이익`)
+  if (hasTarget && tProfit !== 0) {
+    rows.push(`  목  표   ${n(tProfit)}천원 (목표이익률 ${p(tProfitRate)}%)`)
+  }
+  rows.push(`  실  적   ${n(c.profit)}천원 (이익률 ${p(c.profit_rate)}%)`)
+  if (hasTarget && tProfit !== 0) {
+    const st = tgtStatus(c.profit, tProfit, false)
+    if (st) rows.push(`  달성현황  ${st}`)
+  }
+
+  rows.push(``, `━━━━━━━━━━━━━━━━━━━━━`)
+  rows.push(`노스팜CC 식음 총관리자 박요한`)
+
+  return rows.join('\n')
 }
 
 // ── 목표 관리 ───────────────────────────────────────────────
@@ -307,14 +369,6 @@ export default function ClosingPage() {
 
   const calc = calcClosing(fields)
 
-  // 이전 월 데이터 (전월 대비 증감용)
-  const prevData = useMemo(() => {
-    const prevM = selMonth === 1 ? 12 : selMonth - 1
-    const prevY = selMonth === 1 ? selYear - 1 : selYear
-    const found = history.find(h => h.year === prevY && h.month === prevM)
-    if (!found || found.sales_total === 0) return null
-    return { closing: found, calc: calcClosing(found) }
-  }, [history, selYear, selMonth])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -331,7 +385,7 @@ export default function ClosingPage() {
   }, [fields])
 
   async function handleCopy() {
-    const text = buildKakaoText(selYear, selMonth, fields, prevData)
+    const text = buildKakaoText(selYear, selMonth, fields, target)
     try {
       await navigator.clipboard.writeText(text)
     } catch {
