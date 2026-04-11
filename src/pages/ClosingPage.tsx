@@ -6,6 +6,8 @@ import {
   upsertMonthlyClosing,
   getSalesByMonth,
   getRecentClosings,
+  getClosingTarget,
+  upsertClosingTarget,
 } from '../lib/api'
 import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
@@ -79,14 +81,31 @@ function NumInput({
 }
 
 // ── 카카오 보고 텍스트 생성 ─────────────────────────────────
+type PrevSnapshot = { closing: MonthlyClosing; calc: ReturnType<typeof calcClosing> } | null
+
 function buildKakaoText(
   year: number, month: number,
-  d: Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>
+  d: Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>,
+  prev: PrevSnapshot,
 ): string {
   const c = calcClosing(d)
   const n = (v: number) => v.toLocaleString('ko-KR')
   const p = (v: number) => v.toFixed(1)
   const pad = (s: string, len = 7) => s.padEnd(len, '\u3000')
+
+  function delta(current: number, prevVal: number | undefined, isRate = false, lowerIsBetter = false): string {
+    if (prevVal === undefined || prevVal === 0) return ''
+    const diff = current - prevVal
+    if (Math.abs(diff) < (isRate ? 0.05 : 1)) return ''
+    const improved = lowerIsBetter ? diff < 0 : diff > 0
+    const sign = diff > 0 ? '▲' : '▼'
+    const abs = isRate ? Math.abs(diff).toFixed(1) : Math.abs(Math.round(diff)).toLocaleString('ko-KR')
+    const unit = isRate ? '%p' : '천원'
+    return ` (전월比 ${sign}${abs}${unit}${improved ? '↑' : '↓'})`
+  }
+
+  const pc = prev?.calc
+  const pd = prev?.closing
 
   return [
     `📊 [노스팜CC] 손익보고`,
@@ -94,26 +113,27 @@ function buildKakaoText(
     `📅 ${year}년 ${String(month).padStart(2, '0')}월 기준 예상치`,
     ``,
     `💰 매출`,
-    `  ▸ ${pad('합  계')} ➜  ${n(d.sales_total)}천원`,
+    `  ▸ ${pad('합  계')} ➜  ${n(d.sales_total)}천원${delta(d.sales_total, pd?.sales_total)}`,
     ``,
     `🥩 식재료비`,
     `  ▸ ${pad('금  액')}     ${n(d.food_cost)}천원`,
-    `  ▸ ${pad('식재비율')} ➜      ${p(c.food_cost_rate)}%`,
+    `  ▸ ${pad('식재비율')} ➜      ${p(c.food_cost_rate)}%${delta(c.food_cost_rate, pc?.food_cost_rate, true, true)}`,
     ``,
     `👤 인건비`,
     `  ▸ ${pad('직영')}       ${n(d.labor_direct)}천원`,
     `  ▸ ${pad('파견')}       ${n(d.labor_dispatch)}천원`,
     `  ▸ ${pad('지원')}       ${n(d.labor_support)}천원`,
-    `  ▸ ${pad('합  계')} ➜  ${n(c.labor_total)}천원`,
-    `  ▸ ${pad('인건비율')} ➜     ${p(c.labor_rate)}%`,
+    `  ▸ ${pad('합  계')} ➜  ${n(c.labor_total)}천원${delta(c.labor_total, pc?.labor_total)}`,
+    `  ▸ ${pad('인건비율')} ➜     ${p(c.labor_rate)}%${delta(c.labor_rate, pc?.labor_rate, true, true)}`,
     ``,
     `🔧 제조경비`,
     `  ▸ ${pad('금  액')} ➜  ${n(d.manufacturing_cost)}천원`,
-    `  ▸ ${pad('경비율')} ➜      ${p(c.manufacturing_rate)}%`,
+    `  ▸ ${pad('경비율')} ➜      ${p(c.manufacturing_rate)}%${delta(c.manufacturing_rate, pc?.manufacturing_rate, true, true)}`,
     ``,
     `📈 예상이익`,
-    `  ▸ ${pad('금  액')} ➜  ${n(c.profit)}천원`,
-    `  ▸ ${pad('이익률')}  ➜      ${p(c.profit_rate)}%`,
+    `  ▸ ${pad('금  액')} ➜  ${n(c.profit)}천원${delta(c.profit, pc?.profit)}`,
+    `  ▸ ${pad('이익률')}  ➜      ${p(c.profit_rate)}%${delta(c.profit_rate, pc?.profit_rate, true)}`,
+    `  ▸ ${pad('Prime Cost')} ➜  ${p(c.prime_cost_rate)}%${delta(c.prime_cost_rate, pc?.prime_cost_rate, true, true)}`,
   ].join('\n')
 }
 
@@ -126,16 +146,13 @@ interface ClosingTarget {
 
 const DEFAULT_TARGET: ClosingTarget = { sales: 0, food_cost: 0, profit: 0 }
 
-function loadTarget(year: number, month: number): ClosingTarget {
+/** localStorage 마이그레이션용 읽기 전용 */
+function loadTargetFromLS(year: number, month: number): ClosingTarget {
   try {
     const raw = localStorage.getItem(`closing_target_${year}_${month}`)
     if (raw) return { ...DEFAULT_TARGET, ...JSON.parse(raw) as ClosingTarget }
   } catch { /* 무시 */ }
   return { ...DEFAULT_TARGET }
-}
-
-function saveTarget(year: number, month: number, target: ClosingTarget) {
-  localStorage.setItem(`closing_target_${year}_${month}`, JSON.stringify(target))
 }
 
 // ── 전월 대비 뱃지 ──────────────────────────────────────────
@@ -218,19 +235,20 @@ export default function ClosingPage() {
 
   // 최근 14개월 가마감 초기 로드 (전년 동기 비교용)
   useEffect(() => {
-    getRecentClosings(14).then(setHistory).catch(() => {})
+    getRecentClosings(14).then(setHistory).catch(e => console.error('히스토리 로드 실패', e))
   }, [])
 
   // 탭 전환 시 데이터 + 목표 로드
   useEffect(() => {
     setFields(EMPTY_FIELDS(selYear, selMonth))
     setDailyTotal(null)
-    setTarget(loadTarget(selYear, selMonth))
+    setTarget({ ...DEFAULT_TARGET })
 
     Promise.all([
       getMonthlyClosing(selYear, selMonth),
       getSalesByMonth(selYear, selMonth),
-    ]).then(([closing, dailyRows]) => {
+      getClosingTarget(selYear, selMonth),
+    ]).then(([closing, dailyRows, savedTarget]) => {
       const sumK = Math.round(dailyRows.reduce((acc, r) => acc + r.total_sales, 0) / 1000)
       setDailyTotal(sumK)
       if (closing) {
@@ -244,7 +262,26 @@ export default function ClosingPage() {
           manufacturing_cost: closing.manufacturing_cost,
         })
       }
-    }).catch(() => {})
+      if (savedTarget) {
+        setTarget({
+          sales: savedTarget.sales_target,
+          food_cost: savedTarget.food_cost_target,
+          profit: savedTarget.profit_target,
+        })
+      } else {
+        // localStorage 마이그레이션: 기존 데이터가 있으면 Supabase로 이전
+        const lsTarget = loadTargetFromLS(selYear, selMonth)
+        if (lsTarget.sales > 0 || lsTarget.food_cost > 0 || lsTarget.profit > 0) {
+          setTarget(lsTarget)
+          upsertClosingTarget({
+            year: selYear, month: selMonth,
+            sales_target: lsTarget.sales,
+            food_cost_target: lsTarget.food_cost,
+            profit_target: lsTarget.profit,
+          }).catch(e => console.error('목표 마이그레이션 실패', e))
+        }
+      }
+    }).catch(e => console.error('데이터 로드 실패', e))
   }, [selYear, selMonth])
 
   function set<K extends keyof Fields>(key: K, value: Fields[K]) {
@@ -254,7 +291,12 @@ export default function ClosingPage() {
   function updateTarget<K extends keyof ClosingTarget>(key: K, value: ClosingTarget[K]) {
     setTarget(prev => {
       const next = { ...prev, [key]: value }
-      saveTarget(selYear, selMonth, next)
+      upsertClosingTarget({
+        year: selYear, month: selMonth,
+        sales_target: next.sales,
+        food_cost_target: next.food_cost,
+        profit_target: next.profit,
+      }).catch(e => console.error('목표 저장 실패', e))
       return next
     })
   }
@@ -285,7 +327,7 @@ export default function ClosingPage() {
   }, [fields])
 
   async function handleCopy() {
-    const text = buildKakaoText(selYear, selMonth, fields)
+    const text = buildKakaoText(selYear, selMonth, fields, prevData)
     try {
       await navigator.clipboard.writeText(text)
     } catch {

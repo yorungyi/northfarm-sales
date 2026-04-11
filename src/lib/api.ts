@@ -95,3 +95,34 @@ export async function getRecentClosings(count: number): Promise<MonthlyClosing[]
   if (error) throw error
   return ((data ?? []) as MonthlyClosing[]).reverse()
 }
+
+export interface ClosingTargetRow {
+  year: number
+  month: number
+  sales_target: number
+  food_cost_target: number
+  profit_target: number
+}
+
+/** 목표 단건 조회 */
+export async function getClosingTarget(year: number, month: number): Promise<ClosingTargetRow | null> {
+  const { data, error } = await supabase
+    .from('closing_target')
+    .select('year,month,sales_target,food_cost_target,profit_target')
+    .eq('year', year)
+    .eq('month', month)
+    .maybeSingle()
+  if (error) throw error
+  return data as ClosingTargetRow | null
+}
+
+/** 목표 upsert */
+export async function upsertClosingTarget(row: ClosingTargetRow): Promise<void> {
+  const { error } = await supabase
+    .from('closing_target')
+    .upsert(
+      { ...row, updated_at: new Date().toISOString() },
+      { onConflict: 'year,month' }
+    )
+  if (error) throw error
+}
