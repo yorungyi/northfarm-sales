@@ -168,43 +168,7 @@ function loadTargetFromLS(year: number, month: number): ClosingTarget {
   return { ...DEFAULT_TARGET }
 }
 
-// ── 전월 대비 뱃지 ──────────────────────────────────────────
-function DeltaBadge({
-  current, prev, unit = '%p', lowerIsBetter = false,
-}: {
-  current: number; prev: number | undefined; unit?: string; lowerIsBetter?: boolean
-}) {
-  if (prev === undefined || prev === 0 || current === 0) return null
-  const diff = current - prev
-  const threshold = unit === '천원' ? 1 : 0.05
-  if (Math.abs(diff) < threshold) return null
-  const improved = lowerIsBetter ? diff < 0 : diff > 0
-  const sign = diff > 0 ? '▲' : '▼'
-  const absVal = unit === '천원'
-    ? Math.abs(Math.round(diff)).toLocaleString('ko-KR')
-    : Math.abs(diff).toFixed(1)
-  return (
-    <span className={`text-xs font-semibold ${improved ? 'text-blue-500' : 'text-red-400'}`}>
-      {sign}{absVal}{unit}
-    </span>
-  )
-}
-
-// ── 달성률 뱃지 ─────────────────────────────────────────────
-function AchieveBadge({ actual, target }: { actual: number; target: number }) {
-  if (target <= 0 || actual <= 0) return null
-  const rate = (actual / target) * 100
-  const cls = rate >= 100 ? 'text-green-600 bg-green-50 border-green-200'
-            : rate >= 80  ? 'text-amber-600 bg-amber-50 border-amber-200'
-            : 'text-red-600 bg-red-50 border-red-200'
-  return (
-    <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${cls}`}>
-      달성 {rate.toFixed(1)}%
-    </span>
-  )
-}
-
-// ── 목표 대비 아이콘 뱃지 (비용항목: lowerIsBetter=true) ────
+// ── 목표 대비 뱃지 (금액 차이 + 달성률 한 줄) ──────────────
 function TargetCompareBadge({
   actual,
   target,
@@ -217,17 +181,20 @@ function TargetCompareBadge({
   if (target <= 0 || actual <= 0) return null
   const diff = actual - target
   const good = lowerIsBetter ? diff <= 0 : diff >= 0
+  const rate = (actual / target) * 100
   const absDiff = Math.abs(Math.round(diff)).toLocaleString('ko-KR')
   const icon = good ? '✅' : '⚠️'
-  const label = good
+  const gapLabel = good
     ? lowerIsBetter ? `${absDiff}천 절감` : `${absDiff}천 초과달성`
     : lowerIsBetter ? `${absDiff}천 초과` : `${absDiff}천 미달`
   const cls = good
     ? 'text-green-600 bg-green-50 border-green-200'
-    : 'text-red-600 bg-red-50 border-red-200'
+    : rate >= 80
+      ? 'text-amber-600 bg-amber-50 border-amber-200'
+      : 'text-red-600 bg-red-50 border-red-200'
   return (
     <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${cls}`}>
-      {icon} {label}
+      {icon} {gapLabel} ({rate.toFixed(1)}%)
     </span>
   )
 }
@@ -539,14 +506,6 @@ export default function ClosingPage() {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-xs font-bold text-gray-400">💰 매출</p>
-              <DeltaBadge
-                current={fields.sales_total}
-                prev={prevData?.closing.sales_total}
-                unit="천원"
-              />
-              {target.sales > 0 ? (
-                <AchieveBadge actual={fields.sales_total} target={target.sales} />
-              ) : null}
               <TargetCompareBadge actual={fields.sales_total} target={target.sales} />
             </div>
             {dailyTotal !== null ? (
@@ -583,13 +542,6 @@ export default function ClosingPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <p className="text-xs font-bold text-gray-400">🥩 식재료비</p>
-            {hasSales ? (
-              <DeltaBadge
-                current={calc.food_cost_rate}
-                prev={prevData?.calc.food_cost_rate}
-                lowerIsBetter
-              />
-            ) : null}
             <TargetCompareBadge actual={fields.food_cost} target={target.food_cost} lowerIsBetter />
           </div>
           <NumInput
@@ -608,13 +560,6 @@ export default function ClosingPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <p className="text-xs font-bold text-gray-400">👤 인건비</p>
-            {hasSales ? (
-              <DeltaBadge
-                current={calc.labor_rate}
-                prev={prevData?.calc.labor_rate}
-                lowerIsBetter
-              />
-            ) : null}
             <TargetCompareBadge actual={calc.labor_total} target={target.labor} lowerIsBetter />
           </div>
           <div className="space-y-2.5">
@@ -632,13 +577,6 @@ export default function ClosingPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <p className="text-xs font-bold text-gray-400">🔧 제조경비</p>
-            {hasSales ? (
-              <DeltaBadge
-                current={calc.manufacturing_rate}
-                prev={prevData?.calc.manufacturing_rate}
-                lowerIsBetter
-              />
-            ) : null}
             <TargetCompareBadge actual={fields.manufacturing_cost} target={target.manufacturing} lowerIsBetter />
           </div>
           <NumInput
@@ -657,24 +595,9 @@ export default function ClosingPage() {
         <div className={`rounded-2xl p-4 shadow-sm border ${calc.profit >= 0 ? 'bg-blue-600 border-blue-500' : 'bg-red-500 border-red-400'}`}>
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <p className="text-xs font-bold text-blue-200">📈 예상이익 (자동계산)</p>
-            {hasSales && prevData ? (
-              <span className={`text-xs font-semibold ${
-                calc.profit_rate >= prevData.calc.profit_rate ? 'text-blue-200' : 'text-red-200'
-              }`}>
-                {calc.profit_rate >= prevData.calc.profit_rate ? '▲' : '▼'}
-                {Math.abs(calc.profit_rate - prevData.calc.profit_rate).toFixed(1)}%p
-              </span>
+            {target.sales > 0 ? (
+              <TargetCompareBadge actual={calc.profit} target={calcTargetProfit(target)} />
             ) : null}
-            {target.sales > 0 ? (() => {
-              const tProfit = calcTargetProfit(target)
-              const tProfitRate = calcTargetProfitRate(target)
-              const achieved = calc.profit >= tProfit
-              return (
-                <span className={`text-xs font-semibold ${achieved ? 'text-green-300' : 'text-yellow-300'}`}>
-                  목표 {tProfit.toLocaleString()}천원 ({tProfitRate.toFixed(1)}%)
-                </span>
-              )
-            })() : null}
           </div>
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
