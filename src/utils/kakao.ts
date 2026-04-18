@@ -1,14 +1,6 @@
 import type { DailySales } from '../types/sales'
 import { Venue, VENUES } from '../types/sales'
 
-// 업장별 이모지
-const VENUE_EMOJI: Record<Venue, string> = {
-  [Venue.CLUBHOUSE]:  '🏌',
-  [Venue.STARTHOUSE]: '⛳',
-  [Venue.EAST_SHADE]: '🌿',
-  [Venue.WEST_SHADE]: '🌲',
-}
-
 // "4/6(일)" 형태 단축 날짜
 function shortDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')
@@ -16,16 +8,11 @@ function shortDate(dateStr: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`
 }
 
-// 전일 대비 변화율 문자열 (없으면 빈 문자열)
+// 전일 대비 변화율 문자열 — 괄호 포함, 없으면 빈 문자열
 function changeStr(cur: number, prev: number | undefined): string {
   if (!prev || prev === 0) return ''
   const rate = Math.round(((cur - prev) / prev) * 100)
-  return rate >= 0 ? `  ↑${rate}%` : `  ↓${Math.abs(rate)}%`
-}
-
-// 오른쪽 정렬 패딩 (한글 포함 고려 — 고정폭 아님이지만 카톡 고정폭 폰트 기준)
-function rpad(s: string, len: number): string {
-  return s + ' '.repeat(Math.max(0, len - s.length))
+  return rate >= 0 ? ` (전일 ↑${rate}%)` : ` (전일 ↓${Math.abs(rate)}%)`
 }
 
 export interface KakaoReportOptions {
@@ -40,7 +27,7 @@ export function generateKakaoReport(date: string, options: KakaoReportOptions): 
   const { salesMap, prevMap = {}, monthTotal, selMonth, memos = {} as Record<Venue, string> } = options
 
   let total = 0
-  const venueLines: string[] = []
+  const venueBlocks: string[] = []
 
   for (const venue of VENUES) {
     const net = salesMap[venue]?.total_sales ?? 0
@@ -48,30 +35,37 @@ export function generateKakaoReport(date: string, options: KakaoReportOptions): 
     total += net
 
     const netK = Math.round(net / 1000)
-    const emoji = VENUE_EMOJI[venue]
     const change = changeStr(net, prevNet)
-    venueLines.push(`${emoji} ${rpad(venue, 8)}  ${netK.toLocaleString()}천원${change}`)
 
-    // 비고가 있으면 바로 아래 줄에 추가
+    // 업장명 + 금액을 블록으로 구성
+    const block: string[] = [
+      venue,
+      `  ${netK.toLocaleString()}천원${change}`,
+    ]
+
     const memo = memos[venue]?.trim()
     if (memo) {
-      venueLines.push(`   📝 ${memo}`)
+      block.push(`  비고: ${memo}`)
     }
+
+    venueBlocks.push(block.join('\n'))
   }
 
   const totalK = Math.round(total / 1000)
+  const sep = '─'.repeat(20)
+
   const lines = [
-    `📊 [노스팜CC] ${shortDate(date)} 매출 보고`,
-    `━━━━━━━━━━━━━━━━━━━━━`,
-    ...venueLines,
-    `━━━━━━━━━━━━━━━━━━━━━`,
-    `💰 합   계      ${totalK.toLocaleString()}천원`,
+    `[노스팜CC] ${shortDate(date)} 매출 보고`,
+    sep,
+    venueBlocks.join('\n\n'),
+    sep,
+    `합계: ${totalK.toLocaleString()}천원`,
   ]
 
   // 월 누적이 있을 때만 추가
   if (monthTotal !== undefined && selMonth !== undefined) {
     const monthK = Math.round(monthTotal / 1000)
-    lines.push(`📈 ${selMonth}월 누적    ${monthK.toLocaleString()}천원`)
+    lines.push(`${selMonth}월 누적: ${monthK.toLocaleString()}천원`)
   }
 
   return lines.join('\n')
