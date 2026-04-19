@@ -123,15 +123,28 @@ export default function InputPage() {
 
       {/* 헤더 */}
       <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
-        <div className="max-w-lg mx-auto py-4">
-          <h1 className="text-lg font-bold text-gray-900">일매출 입력</h1>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="mt-1 text-sm text-blue-600 font-medium bg-transparent border-none outline-none"
-          />
-          <p className="text-xs text-gray-400">{formatDate(selectedDate)}</p>
+        <div className="max-w-lg mx-auto py-4 flex items-start justify-between">
+          <div>
+            <h1 className="text-lg font-bold text-gray-900">일매출 입력</h1>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="mt-1 text-sm text-blue-600 font-medium bg-transparent border-none outline-none"
+            />
+            <p className="text-xs text-gray-400">{formatDate(selectedDate)}</p>
+          </div>
+          <button
+            onClick={() => {
+              if (window.confirm('모든 업장 매출을 0으로 초기화할까요?')) {
+                resetInputs()
+                setGuestCountState(0)
+              }
+            }}
+            className="mt-1 text-sm text-red-500 font-medium px-3 py-1.5 rounded-lg border border-red-200 active:bg-red-50"
+          >
+            초기화
+          </button>
         </div>
       </header>
 
