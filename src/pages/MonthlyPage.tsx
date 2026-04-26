@@ -64,6 +64,13 @@ export default function MonthlyPage() {
     dayMap.set(r.sale_date, (dayMap.get(r.sale_date) ?? 0) + r.total_sales)
   }
 
+  // 작년 일자별 합계 맵 (MM-DD 키)
+  const lastYearDayMap = new Map<string, number>()
+  for (const r of lastYearRows) {
+    const key = r.sale_date.slice(5) // "MM-DD"
+    lastYearDayMap.set(key, (lastYearDayMap.get(key) ?? 0) + r.total_sales)
+  }
+
   // 날짜 × 업장 맵 (드릴다운용)
   const venueMap = new Map<string, Partial<Record<Venue, number>>>()
   for (const r of rows) {
@@ -79,13 +86,14 @@ export default function MonthlyPage() {
   const changeRate = calcChangeRate(monthTotal, prevTotal)
   const yoyRate = calcChangeRate(monthTotal, lastYearTotal)
 
-  type DaySummary = { date: string; net: number; hasData: boolean }
+  type DaySummary = { date: string; net: number; hasData: boolean; lastYearNet: number }
   const daySummaries: DaySummary[] = Array.from({ length: daysInMonth }, (_, i) => {
     const mm = String(selMonth).padStart(2, '0')
     const dd = String(i + 1).padStart(2, '0')
     const date = `${selYear}-${mm}-${dd}`
     const net = dayMap.get(date) ?? 0
-    return { date, net, hasData: dayMap.has(date) }
+    const dayKey = `${mm}-${dd}`
+    return { date, net, hasData: dayMap.has(date), lastYearNet: lastYearDayMap.get(dayKey) ?? 0 }
   })
 
   return (
@@ -184,6 +192,20 @@ export default function MonthlyPage() {
                       </span>
                       <span className={`text-right font-medium ${day.hasData ? 'text-gray-800' : 'text-gray-300'}`}>
                         {day.hasData ? day.net.toLocaleString() + '원' : '-'}
+                        {day.lastYearNet > 0 && (() => {
+                          const delta = day.hasData
+                            ? Math.round(((day.net - day.lastYearNet) / day.lastYearNet) * 100)
+                            : null
+                          return (
+                            <span className={`block text-xs mt-0.5 ${
+                              delta === null ? 'text-gray-400' :
+                              delta >= 0 ? 'text-green-500' : 'text-red-400'
+                            }`}>
+                              작년 {Math.round(day.lastYearNet / 1000).toLocaleString()}천
+                              {delta !== null && ` (${delta >= 0 ? '↑' : '↓'}${Math.abs(delta)}%)`}
+                            </span>
+                          )
+                        })()}
                       </span>
                       <span className="text-right">
                         {missing && <span className="text-xs text-red-400 font-medium">입력 →</span>}
