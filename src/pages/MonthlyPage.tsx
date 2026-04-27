@@ -127,13 +127,13 @@ export default function MonthlyPage() {
           <p className="text-2xl font-bold mt-1">{formatCurrency(monthTotal)}</p>
           <div className="flex justify-center gap-4 mt-1.5">
             {changeRate !== null && (
-              <p className={`text-sm ${changeRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+              <p className={`text-sm whitespace-nowrap ${changeRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
                 전월 {changeRate >= 0 ? '↑' : '↓'}{Math.abs(changeRate)}%
               </p>
             )}
             {yoyRate !== null && (
-              <p className={`text-sm ${yoyRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                전년 동월 {yoyRate >= 0 ? '↑' : '↓'}{Math.abs(yoyRate)}%
+              <p className={`text-sm whitespace-nowrap ${yoyRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                전년동월 {yoyRate >= 0 ? '↑' : '↓'}{Math.abs(yoyRate)}%
               </p>
             )}
           </div>
@@ -143,9 +143,13 @@ export default function MonthlyPage() {
       {/* 일별 목록 */}
       <div className="px-4 pt-4 max-w-lg mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="grid grid-cols-3 text-xs text-gray-400 font-medium px-4 py-2 border-b border-gray-100">
+          <div
+            style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '0 8px' }}
+            className="text-xs text-gray-400 font-medium px-4 py-2 border-b border-gray-100 items-center"
+          >
             <span>날짜</span>
             <span className="text-right">순매출</span>
+            <span className="text-right">전년</span>
             <span></span>
           </div>
 
@@ -173,7 +177,7 @@ export default function MonthlyPage() {
                         }
                       }}
                       disabled={!day.hasData && !isPast && !isToday}
-                      className={`w-full grid grid-cols-3 px-4 py-3 text-sm transition-colors ${
+                      className={`w-full grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-2 px-4 py-3 text-sm transition-colors ${
                         day.hasData
                           ? isExpanded
                             ? 'bg-blue-50'
@@ -190,23 +194,26 @@ export default function MonthlyPage() {
                           <span className={`w-1.5 h-1.5 rounded-full inline-block ${isExpanded ? 'bg-blue-500' : 'bg-green-400'}`} />
                         )}
                       </span>
-                      <span className={`text-right font-medium ${day.hasData ? 'text-gray-800' : 'text-gray-300'}`}>
+                      <span className={`text-right font-medium whitespace-nowrap ${day.hasData ? 'text-gray-800' : 'text-gray-300'}`}>
                         {day.hasData ? day.net.toLocaleString() + '원' : '-'}
-                        {day.lastYearNet > 0 && (() => {
-                          const delta = day.hasData
-                            ? Math.round(((day.net - day.lastYearNet) / day.lastYearNet) * 100)
-                            : null
-                          return (
-                            <span className={`block text-xs mt-0.5 ${
-                              delta === null ? 'text-gray-400' :
-                              delta >= 0 ? 'text-green-500' : 'text-red-400'
-                            }`}>
-                              작년 {Math.round(day.lastYearNet / 1000).toLocaleString()}천
-                              {delta !== null && ` (${delta >= 0 ? '↑' : '↓'}${Math.abs(delta)}%)`}
-                            </span>
-                          )
-                        })()}
                       </span>
+                      {(() => {
+                        if (day.lastYearNet <= 0) return <span />
+                        const lyThousands = Math.round(day.lastYearNet / 1000)
+                        const delta = day.hasData
+                          ? Math.round(((day.net - day.lastYearNet) / day.lastYearNet) * 100)
+                          : null
+                        return (
+                          <span className={`text-right text-xs whitespace-nowrap ${
+                            delta === null ? 'text-gray-400' :
+                            delta >= 0 ? 'text-green-500' : 'text-red-400'
+                          }`}>
+                            {delta !== null
+                              ? `작년 ${lyThousands.toLocaleString()}천 (${delta >= 0 ? '↑' : '↓'}${Math.abs(delta)}%)`
+                              : `작년 ${lyThousands.toLocaleString()}천`}
+                          </span>
+                        )
+                      })()}
                       <span className="text-right">
                         {missing && <span className="text-xs text-red-400 font-medium">입력 →</span>}
                         {day.hasData && (
