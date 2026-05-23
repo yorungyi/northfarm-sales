@@ -164,7 +164,10 @@ export default function DashboardPage() {
   const achieveRate = target > 0 ? Math.min(Math.round((monthDonut.total / target) * 100), 100) : 0
   const todayNum = parseInt(today.split('-')[2], 10)
   const daysInMonth = new Date(selYear, selMonth, 0).getDate()
-  const remainDays = daysInMonth - todayNum + 1  // 오늘 포함
+  // 오늘 매출 입력 완료 시 오늘 제외, 미입력 시 오늘 포함
+  const remainDays = todayDonut.total > 0
+    ? daysInMonth - todayNum
+    : daysInMonth - todayNum + 1
   const remainAmount = Math.max(target - monthDonut.total, 0)
   const dailyNeed = remainDays > 0 && remainAmount > 0
     ? Math.round(remainAmount / remainDays / 10000) // 만원 단위
@@ -371,7 +374,9 @@ export default function DashboardPage() {
                   {achieveRate < 100 && dailyNeed > 0 && (
                     <div className="text-right">
                       <p className="text-sm font-bold text-gray-700">{dailyNeed.toLocaleString()}만원</p>
-                      <p className="text-xs text-gray-400">남은 {remainDays}일 일평균 필요</p>
+                      <p className="text-xs text-gray-400">
+                        {todayDonut.total > 0 ? `내일부터 ${remainDays}일` : `오늘부터 ${remainDays}일`} 일평균 필요
+                      </p>
                     </div>
                   )}
                   {achieveRate >= 100 && (
