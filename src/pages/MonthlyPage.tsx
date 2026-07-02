@@ -26,6 +26,7 @@ const VENUE_COLORS: Record<Venue, string> = {
   [Venue.STARTHOUSE]: '#10B981',
   [Venue.EAST_SHADE]: '#F59E0B',
   [Venue.WEST_SHADE]: '#8B5CF6',
+  [Venue.CLIENT]:     '#EC4899',
 }
 
 export default function MonthlyPage() {

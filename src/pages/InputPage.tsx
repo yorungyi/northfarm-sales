@@ -17,9 +17,9 @@ export default function InputPage() {
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
-  const [memos, setMemos] = useState<Record<Venue, string>>({
-    [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
-  })
+  const [memos, setMemos] = useState<Record<Venue, string>>(
+    () => Object.fromEntries(VENUES.map((v) => [v, ''])) as Record<Venue, string>
+  )
   // 일별 내장객 수 (업장 구분 없이 하루 1개)
   const [guestCount, setGuestCountState] = useState(0)
 
@@ -62,9 +62,9 @@ export default function InputPage() {
 
   // 날짜 변경 시 메모·내장객 수 localStorage에서 로드
   useEffect(() => {
-    const loaded: Record<Venue, string> = {
-      [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
-    }
+    const loaded: Record<Venue, string> = Object.fromEntries(
+      VENUES.map((v) => [v, ''])
+    ) as Record<Venue, string>
     for (const v of VENUES) {
       loaded[v] = localStorage.getItem(`northfarm_memo_${selectedDate}_${v}`) ?? ''
     }

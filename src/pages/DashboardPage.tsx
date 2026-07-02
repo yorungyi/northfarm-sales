@@ -24,6 +24,7 @@ const VENUE_COLORS: Record<Venue, string> = {
   [Venue.STARTHOUSE]: '#10B981', // emerald
   [Venue.EAST_SHADE]: '#F59E0B', // amber
   [Venue.WEST_SHADE]: '#8B5CF6', // violet
+  [Venue.CLIENT]:     '#EC4899', // rose
 }
 
 const VENUE_COLORS_LIGHT: Record<Venue, string> = {
@@ -31,6 +32,7 @@ const VENUE_COLORS_LIGHT: Record<Venue, string> = {
   [Venue.STARTHOUSE]: '#D1FAE5',
   [Venue.EAST_SHADE]: '#FEF3C7',
   [Venue.WEST_SHADE]: '#EDE9FE',
+  [Venue.CLIENT]:     '#FCE7F3',
 }
 
 function buildDonutData(map: Partial<Record<Venue, number>>) {

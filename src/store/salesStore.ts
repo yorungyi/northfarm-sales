@@ -15,6 +15,7 @@ const defaultInputs: Record<Venue, number> = {
   [Venue.STARTHOUSE]: 0,
   [Venue.EAST_SHADE]: 0,
   [Venue.WEST_SHADE]: 0,
+  [Venue.CLIENT]:     0,
 }
 
 function todayString(): string {

@@ -16,9 +16,9 @@ export default function DetailPage() {
   const [salesMap, setSalesMap] = useState<Partial<Record<Venue, DailySales>>>({})
   const [prevMap, setPrevMap] = useState<Partial<Record<Venue, DailySales>>>({})
   const [monthTotal, setMonthTotal] = useState<number>(0)
-  const [memos, setMemos] = useState<Record<Venue, string>>({
-    [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
-  })
+  const [memos, setMemos] = useState<Record<Venue, string>>(
+    () => Object.fromEntries(VENUES.map((v) => [v, ''])) as Record<Venue, string>
+  )
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
@@ -49,9 +49,9 @@ export default function DetailPage() {
       setMonthTotal(monthRows.reduce((s, r) => s + r.total_sales, 0))
 
       // 메모 로드
-      const loaded: Record<Venue, string> = {
-        [Venue.CLUBHOUSE]: '', [Venue.STARTHOUSE]: '', [Venue.EAST_SHADE]: '', [Venue.WEST_SHADE]: '',
-      }
+      const loaded: Record<Venue, string> = Object.fromEntries(
+        VENUES.map((v) => [v, ''])
+      ) as Record<Venue, string>
       for (const v of VENUES) {
         loaded[v] = localStorage.getItem(`northfarm_memo_${safeDate}_${v}`) ?? ''
       }
