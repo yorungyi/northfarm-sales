@@ -4,18 +4,23 @@ import type { DailySales } from '../types/sales'
 import { Venue, VENUES } from '../types/sales'
 import { getSalesByMonth } from '../lib/api'
 import { formatCurrency, calcChangeRate } from '../utils/format'
+import { downloadCsv } from '../utils/exportCsv'
 import BottomNav from '../components/BottomNav'
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
 
+/**
+ * 최근 count개월 목록 (오래된 달 → 이번 달 순).
+ * 각 달의 1일을 기준으로 계산해 31일 등 말일에 실행해도 월이 건너뛰거나 중복되지 않는다.
+ */
 function getRecentMonths(count: number): { year: number; month: number }[] {
-  const result = []
-  const d = new Date()
+  const now = new Date()
+  const result: { year: number; month: number }[] = []
   for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     result.unshift({ year: d.getFullYear(), month: d.getMonth() + 1 })
-    d.setMonth(d.getMonth() - 1)
   }
   return result
 }
@@ -97,6 +102,16 @@ export default function MonthlyPage() {
     return { date, net, hasData: dayMap.has(date), lastYearNet: lastYearDayMap.get(dayKey) ?? 0 }
   })
 
+  /** 선택된 월의 일자별 × 업장별 매출을 CSV로 내려받기 */
+  function handleExportCsv() {
+    const headers = ['날짜', ...VENUES, '합계']
+    const csvRows: (string | number)[][] = daySummaries.map((day) => {
+      const vMap = venueMap.get(day.date) ?? {}
+      return [day.date, ...VENUES.map((venue) => vMap[venue] ?? 0), day.net]
+    })
+    downloadCsv(`노스팜CC_매출_${selYear}년${selMonth}월.csv`, headers, csvRows)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
@@ -141,8 +156,19 @@ export default function MonthlyPage() {
         </div>
       </div>
 
+      {/* 엑셀 내보내기 */}
+      <div className="px-4 pt-3 max-w-lg mx-auto flex justify-end">
+        <button
+          onClick={handleExportCsv}
+          disabled={loading}
+          className="min-h-[44px] px-4 text-sm text-blue-600 font-medium rounded-xl border border-blue-200 bg-white active:bg-blue-50 transition-colors disabled:opacity-50"
+        >
+          엑셀 내보내기
+        </button>
+      </div>
+
       {/* 일별 목록 */}
-      <div className="px-4 pt-4 max-w-lg mx-auto">
+      <div className="px-4 pt-3 max-w-lg mx-auto">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div
             style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '0 8px' }}

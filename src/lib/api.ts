@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 import type { DailySales } from '../types/sales'
 import type { MonthlyClosing } from '../types/closing'
-import { Venue } from '../types/sales'
+import { Venue, VENUES } from '../types/sales'
 
 /** 일매출 upsert — 같은 날 같은 업장은 덮어씀 */
 export async function upsertSales(
@@ -17,6 +17,111 @@ export async function upsertSales(
       { onConflict: 'sale_date,venue' },
     )
   if (error) throw error
+}
+
+// ── 일별 메모·내장객 수 (daily_notes) ───────────────────────
+
+/** 일별 부가정보 — 내장객 수 + 업장별 메모 */
+export interface DailyNote {
+  guest_count: number
+  memos: Record<string, string>
+}
+
+/** 특정 날짜의 메모·내장객 수 조회 — 없으면 null */
+export async function getDailyNote(date: string): Promise<DailyNote | null> {
+  const { data, error } = await supabase
+    .from('daily_notes')
+    .select('guest_count,memos')
+    .eq('sale_date', date)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+
+  const row = data as { guest_count: number | null; memos: Record<string, string> | null }
+  return {
+    guest_count: row.guest_count ?? 0,
+    memos: row.memos ?? {},
+  }
+}
+
+/** 일별 메모·내장객 수 upsert — 같은 날짜는 덮어씀 */
+export async function upsertDailyNote(
+  date: string,
+  guestCount: number,
+  memos: Record<string, string>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('daily_notes')
+    .upsert(
+      {
+        sale_date: date,
+        guest_count: guestCount,
+        memos,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'sale_date' },
+    )
+  if (error) throw error
+}
+
+/** 메모·내장객 수(daily_notes) 저장 처리 결과 */
+export type NoteSaveStatus =
+  | 'saved'    // 정상 저장됨
+  | 'failed'   // 저장 시도했으나 실패 (매출 저장은 성공)
+  | 'skipped'  // 호출부 요청으로 저장하지 않음 (서버의 기존 값 보존)
+
+/** 일매출 입력 1건 저장 결과 */
+export interface SaveDailyEntryResult {
+  noteStatus: NoteSaveStatus
+}
+
+/** saveDailyEntry 옵션 */
+export interface SaveDailyEntryOptions {
+  /**
+   * true면 daily_notes 저장을 건너뛴다.
+   * 메모·내장객 수를 불러오지 못한 상태에서 빈 값으로 덮어쓰는 사고를 막기 위한 용도.
+   */
+  skipNote?: boolean
+}
+
+/**
+ * 일매출 입력 1건 통합 저장.
+ * - 매출(daily_sales) 저장은 **필수** — 하나라도 실패하면 reject 되어 호출부가 오프라인 큐로 처리한다.
+ * - 메모·내장객 수(daily_notes) 저장은 **부가** — 실패해도 reject 하지 않고 결과로만 알린다.
+ *   (daily_notes 오류 하나로 이미 성공한 매출 저장까지 실패로 오판하지 않도록 분리)
+ */
+export async function saveDailyEntry(
+  date: string,
+  inputs: Record<Venue, number>,
+  guestCount: number,
+  memos: Record<Venue, string>,
+  options: SaveDailyEntryOptions = {},
+): Promise<SaveDailyEntryResult> {
+  // 1) 매출 저장 (필수) — 전 업장 시도 후 실패가 있으면 첫 오류를 throw
+  const salesResults = await Promise.allSettled(
+    VENUES.map((venue) => upsertSales(date, venue, inputs[venue] ?? 0, 0)),
+  )
+  const salesFailure = salesResults.find(
+    (r): r is PromiseRejectedResult => r.status === 'rejected',
+  )
+  if (salesFailure) throw salesFailure.reason
+
+  // 2) 메모·내장객 수 저장 (부가) — 요청 시 생략 가능, 실패해도 매출 저장을 무효화하지 않음
+  if (options.skipNote) return { noteStatus: 'skipped' }
+
+  // 빈 메모는 저장하지 않아 jsonb를 깔끔하게 유지
+  const cleanMemos: Record<string, string> = {}
+  for (const venue of VENUES) {
+    const memo = (memos[venue] ?? '').trim()
+    if (memo) cleanMemos[venue] = memo
+  }
+
+  try {
+    await upsertDailyNote(date, guestCount, cleanMemos)
+    return { noteStatus: 'saved' }
+  } catch {
+    return { noteStatus: 'failed' }
+  }
 }
 
 /** 특정 날짜의 4개 업장 데이터 조회 */

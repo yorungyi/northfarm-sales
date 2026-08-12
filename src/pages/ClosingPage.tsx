@@ -9,6 +9,7 @@ import {
   getClosingTarget,
   upsertClosingTarget,
 } from '../lib/api'
+import { downloadCsv } from '../utils/exportCsv'
 import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
 import ClosingTrendChart from '../components/ClosingTrendChart'
@@ -262,6 +263,9 @@ function TargetCompareBadge({
 }
 
 // ── 메인 컴포넌트 ───────────────────────────────────────────
+/** 이번 달 가마감 미입력 경고를 띄우기 시작하는 날짜(일) */
+const CLOSING_WARN_DAY = 25
+
 type Fields = Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>
 
 const EMPTY_FIELDS = (year: number, month: number): Fields => ({
@@ -271,12 +275,16 @@ const EMPTY_FIELDS = (year: number, month: number): Fields => ({
   manufacturing_cost: 0,
 })
 
-function getRecentMonths(count: number) {
-  const result = []
-  const d = new Date()
+/**
+ * 최근 count개월 목록 (오래된 달 → 이번 달 순).
+ * 각 달의 1일을 기준으로 계산해 31일 등 말일에 실행해도 월이 건너뛰거나 중복되지 않는다.
+ */
+function getRecentMonths(count: number): { year: number; month: number }[] {
+  const now = new Date()
+  const result: { year: number; month: number }[] = []
   for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     result.unshift({ year: d.getFullYear(), month: d.getMonth() + 1 })
-    d.setMonth(d.getMonth() - 1)
   }
   return result
 }
@@ -293,6 +301,10 @@ export default function ClosingPage() {
   const [history, setHistory]         = useState<MonthlyClosing[]>([])
   const [target, setTarget]           = useState<ClosingTarget>({ ...DEFAULT_TARGET })
   const [showTarget, setShowTarget]   = useState(false)
+  // 선택된 월의 가마감이 Supabase에 저장되어 있는지 (미입력 경고 판단용)
+  const [closingExists, setClosingExists] = useState(false)
+  // 가마감 조회가 성공적으로 끝났는지 — 로딩 중·조회 실패 시 경고 배너를 그리지 않기 위한 플래그
+  const [closingLoaded, setClosingLoaded] = useState(false)
 
   const tabs = getRecentMonths(6)
 
@@ -306,6 +318,8 @@ export default function ClosingPage() {
     setFields(EMPTY_FIELDS(selYear, selMonth))
     setDailyTotal(null)
     setTarget({ ...DEFAULT_TARGET })
+    setClosingExists(false)
+    setClosingLoaded(false)
 
     Promise.all([
       getMonthlyClosing(selYear, selMonth),
@@ -314,6 +328,8 @@ export default function ClosingPage() {
     ]).then(([closing, dailyRows, savedTarget]) => {
       const sumK = Math.round(dailyRows.reduce((acc, r) => acc + r.total_sales, 0) / 1000)
       setDailyTotal(sumK)
+      setClosingExists(closing !== null)
+      setClosingLoaded(true)
       if (closing) {
         setFields({
           year: closing.year, month: closing.month,
@@ -346,7 +362,10 @@ export default function ClosingPage() {
           }).catch(e => console.error('목표 마이그레이션 실패', e))
         }
       }
-    }).catch(e => console.error('데이터 로드 실패', e))
+    }).catch(e => {
+      // 로드 실패 — closingLoaded를 false로 유지해 오탐 경고 배너가 뜨지 않게 한다
+      console.error('데이터 로드 실패', e)
+    })
   }, [selYear, selMonth])
 
   function set<K extends keyof Fields>(key: K, value: Fields[K]) {
@@ -374,6 +393,7 @@ export default function ClosingPage() {
     setSaving(true)
     try {
       await upsertMonthlyClosing(fields)
+      setClosingExists(true)
       getRecentClosings(14).then(setHistory).catch(() => {})
       setToast({ message: '저장되었습니다!', type: 'success' })
     } catch (e) {
@@ -409,6 +429,32 @@ export default function ClosingPage() {
 
   const hasSales = fields.sales_total !== 0
 
+  // ⚠️ 이번 달 가마감 미입력 경고 — 25일 이후부터 노출
+  const isCurrentMonth = selYear === now.getFullYear() && selMonth === now.getMonth() + 1
+  // (로딩 완료 전에는 그리지 않아 깜빡임·오탐 방지)
+  const showClosingWarning =
+    closingLoaded &&
+    isCurrentMonth && !closingExists && fields.sales_total === 0 && now.getDate() >= CLOSING_WARN_DAY
+
+  /** 최근 14개월 가마감 전체를 CSV로 내려받기 */
+  function handleExportCsv() {
+    const headers = ['년', '월', '매출', '식재료비', '인건비합계', '제조경비', '예상이익', '이익률(%)']
+    const rows: (string | number)[][] = history.map((h) => {
+      const c = calcClosing(h)
+      return [
+        h.year,
+        h.month,
+        h.sales_total,
+        h.food_cost,
+        c.labor_total,
+        h.manufacturing_cost,
+        c.profit,
+        c.profit_rate.toFixed(1),
+      ]
+    })
+    downloadCsv('노스팜CC_가마감_최근14개월.csv', headers, rows)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-36">
       {toast !== null && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
@@ -438,6 +484,18 @@ export default function ClosingPage() {
       </header>
 
       <div className="px-4 pt-4 max-w-lg mx-auto space-y-3">
+
+        {/* ⚠️ 이번 달 가마감 미입력 경고 */}
+        {showClosingWarning ? (
+          <div className="bg-amber-50 rounded-2xl p-4 shadow-sm border border-amber-200">
+            <p className="text-sm font-bold text-amber-700">
+              ⚠️ 이번 달 가마감이 아직 입력되지 않았습니다
+            </p>
+            <p className="mt-1 text-xs text-amber-600">
+              {selYear}년 {selMonth}월 손익 예상치를 입력하고 저장해주세요.
+            </p>
+          </div>
+        ) : null}
 
         {/* 📊 추세 차트 */}
         {history.length > 1 ? (
@@ -676,6 +734,15 @@ export default function ClosingPage() {
             ) : null}
           </div>
         </div>
+
+        {/* 엑셀 내보내기 — 최근 14개월 가마감 */}
+        <button
+          onClick={handleExportCsv}
+          disabled={history.length === 0}
+          className="w-full py-3 rounded-2xl bg-white text-blue-600 font-bold text-sm shadow-sm border border-blue-200 active:scale-95 transition-transform disabled:opacity-40"
+        >
+          엑셀 내보내기 (최근 14개월)
+        </button>
 
         {/* 버튼 영역 */}
         <div className="grid grid-cols-3 gap-2 pb-2">

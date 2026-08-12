@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { DailySales } from '../types/sales'
 import { Venue, VENUES } from '../types/sales'
-import { getSalesByDate, getSalesByMonth } from '../lib/api'
+import { getSalesByDate, getSalesByMonth, getDailyNote } from '../lib/api'
 import { formatDate, formatCurrency, calcChangeRate } from '../utils/format'
 import { generateKakaoReport } from '../utils/kakao'
 import type { KakaoReportOptions } from '../utils/kakao'
@@ -36,7 +36,8 @@ export default function DetailPage() {
       getSalesByDate(safeDate),
       getSalesByDate(prevDateStr),
       getSalesByMonth(year, month), // 월 누적용
-    ]).then(([cur, prev, monthRows]) => {
+      getDailyNote(safeDate),       // 메모·내장객 수
+    ]).then(([cur, prev, monthRows, note]) => {
       const cm: Partial<Record<Venue, DailySales>> = {}
       for (const r of cur) cm[r.venue as Venue] = r
       setSalesMap(cm)
@@ -48,14 +49,16 @@ export default function DetailPage() {
       // 월 누적 합계
       setMonthTotal(monthRows.reduce((s, r) => s + r.total_sales, 0))
 
-      // 메모 로드
+      // 메모 로드 (Supabase daily_notes)
       const loaded: Record<Venue, string> = Object.fromEntries(
         VENUES.map((v) => [v, ''])
       ) as Record<Venue, string>
       for (const v of VENUES) {
-        loaded[v] = localStorage.getItem(`northfarm_memo_${safeDate}_${v}`) ?? ''
+        loaded[v] = note?.memos[v] ?? ''
       }
       setMemos(loaded)
+    }).catch(() => {
+      // 조회 실패 — 화면은 빈 상태로 유지
     }).finally(() => setLoading(false))
   }, [safeDate])
 
