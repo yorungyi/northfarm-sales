@@ -64,6 +64,37 @@ export async function upsertDailyNote(
   if (error) throw error
 }
 
+/** 날짜가 포함된 일별 부가정보 (범위 조회 결과) */
+export interface DailyNoteRow extends DailyNote {
+  sale_date: string
+}
+
+/**
+ * 일별 메모·내장객 수 범위 조회 (startDate 이상 endDate 미만, YYYY-MM-DD).
+ * guest_count·memos가 null인 행도 0 / {} 로 정규화해 호출부에서 분기하지 않아도 되게 한다.
+ */
+export async function getNotesByRange(startDate: string, endDate: string): Promise<DailyNoteRow[]> {
+  const { data, error } = await supabase
+    .from('daily_notes')
+    .select('sale_date,guest_count,memos')
+    .gte('sale_date', startDate)
+    .lt('sale_date', endDate)
+    .order('sale_date', { ascending: true })
+  if (error) throw error
+
+  const rows = (data ?? []) as {
+    sale_date: string
+    guest_count: number | null
+    memos: Record<string, string> | null
+  }[]
+
+  return rows.map((r) => ({
+    sale_date: r.sale_date,
+    guest_count: r.guest_count ?? 0,
+    memos: r.memos ?? {},
+  }))
+}
+
 /** 메모·내장객 수(daily_notes) 저장 처리 결과 */
 export type NoteSaveStatus =
   | 'saved'    // 정상 저장됨
