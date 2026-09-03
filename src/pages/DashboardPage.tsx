@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Doughnut, Bar } from 'react-chartjs-2'
 import {
@@ -58,6 +58,24 @@ const WEEKEND_BAR_COLOR = '#F59E0B'
 
 /** 최근 4주 = 28일 */
 const WEEKDAY_RANGE_DAYS = 28
+
+/** 대시보드 월 선택 탭에 노출할 개월 수 (이번 달 포함, 과거 방향) */
+const MONTH_TAB_COUNT = 12
+
+/**
+ * 최근 count개월 목록 (오래된 달 → 이번 달 순).
+ * 각 달의 1일을 기준으로 계산해 31일 등 말일에 실행해도 월이 건너뛰거나 중복되지 않는다.
+ * (MonthlyPage·ClosingPage와 동일 규칙)
+ */
+function getRecentMonths(count: number): { year: number; month: number }[] {
+  const now = new Date()
+  const result: { year: number; month: number }[] = []
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    result.unshift({ year: d.getFullYear(), month: d.getMonth() + 1 })
+  }
+  return result
+}
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
@@ -140,8 +158,21 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const today = toDateString(new Date())
   const now = new Date()
-  const [selYear] = useState(now.getFullYear())
-  const [selMonth] = useState(now.getMonth() + 1)
+  const [selYear, setSelYear] = useState(now.getFullYear())
+  const [selMonth, setSelMonth] = useState(now.getMonth() + 1)
+
+  // 선택 월이 이번 달인지 — '오늘' 카드·목표 잔여일수 등 오늘 기준 계산의 분기점
+  const isCurrentMonth = selYear === now.getFullYear() && selMonth === now.getMonth() + 1
+
+  // 월 선택 탭 (오래된 달 → 이번 달)
+  const monthTabs = getRecentMonths(MONTH_TAB_COUNT)
+  const monthTabsRef = useRef<HTMLDivElement>(null)
+
+  // 첫 렌더에서만 월 탭을 오른쪽 끝(이번 달)으로 이동 — 이후 사용자의 스크롤 위치는 건드리지 않는다
+  useEffect(() => {
+    const el = monthTabsRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [])
 
   const [todayMap, setTodayMap] = useState<Partial<Record<Venue, number>>>({})
   const [monthMap, setMonthMap] = useState<Partial<Record<Venue, number>>>({})
@@ -199,13 +230,20 @@ export default function DashboardPage() {
     const nextYear   = selMonth === 12 ? selYear + 1 : selYear
     const monthEnd   = `${nextYear}-${pad2(nextMonth)}-01`
 
+    // '오늘 매출'과 '최근 28일'은 이번 달 화면에서만 쓰는 값 — 지난 달을 보는 중이면 조회하지 않는다.
+    // (지난 달의 일자별·요일별 차트는 이미 불러온 그 달 데이터에서 파생시킨다)
+    const [todayYear, todayMonth] = today.split('-').map(Number)
+    const viewingCurrentMonth = selYear === todayYear && selMonth === todayMonth
+
     // allSettled — 조회 하나가 실패해도 나머지 화면은 정상 표시한다
     Promise.allSettled([
-      getSalesByDate(today),
+      viewingCurrentMonth ? getSalesByDate(today) : Promise.resolve([] as DailySales[]),
       getSalesByMonth(selYear, selMonth),
       getSalesByMonth(selYear - 1, selMonth), // 전년 동월
       getSalesByMonth(prevYear, prevMonth),   // 전월
-      getSalesByRange(startStr, endStr),      // 최근 28일
+      viewingCurrentMonth
+        ? getSalesByRange(startStr, endStr)   // 최근 28일
+        : Promise.resolve([] as DailySales[]),
       getNotesByRange(monthStart, monthEnd),  // 이번 달 메모·내장객 수
       getMonthlyClosing(selYear, selMonth),   // 가마감 입력 여부
     ]).then(([rToday, rMonth, rLastYear, rPrev, rRange, rNotes, rClosing]) => {
@@ -291,6 +329,9 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false
 
+    // 월 전환 직후 이전 달 목표가 잠시 남아 보이지 않도록 초기화한다
+    setTarget(0)
+
     getClosingTarget(selYear, selMonth).then((row) => {
       if (cancelled) return
 
@@ -342,12 +383,16 @@ export default function DashboardPage() {
   const todayNum = parseInt(today.split('-')[2], 10)
   const daysInMonth = new Date(selYear, selMonth, 0).getDate()
 
-  // 미입력일 — 오늘 이전(지난 날짜) 중 데이터가 없는 날. MonthlyPage의 missing 표시와 동일 기준
+  // 미입력일 — 이번 달은 오늘 이전(지난 날짜), 지난 달은 그 달 전체 중 데이터가 없는 날
   const enteredDates = new Set(monthRows.map((r) => r.sale_date))
+  const missingCheckLastDay = isCurrentMonth ? todayNum - 1 : daysInMonth
   let missingDays = 0
-  for (let d = 1; d < todayNum; d++) {
+  for (let d = 1; d <= missingCheckLastDay; d++) {
     if (!enteredDates.has(`${selYear}-${pad2(selMonth)}-${pad2(d)}`)) missingDays++
   }
+
+  // 전월 라벨 (1월이면 전년 12월)
+  const prevMonthLabel = `${selMonth === 1 ? 12 : selMonth - 1}월`
 
   // 최고 업장 (이번달)
   const topVenue = VENUES.reduce((best, v) =>
@@ -360,15 +405,57 @@ export default function DashboardPage() {
   const monthPerGuest = monthGuestTotal > 0 && monthDonut.total > 0
     ? Math.round(monthDonut.total / monthGuestTotal)
     : null
-  const todayGuest = notes.find((n) => n.sale_date === today)?.guest_count ?? 0
-  const todayPerGuest = todayGuest > 0 && todayDonut.total > 0
-    ? Math.round(todayDonut.total / todayGuest)
+  // ── 선택 월 파생 데이터 ────────────────────────────────
+  // 지난 달을 볼 때는 '오늘'·'최근 28일'이 의미가 없으므로, 이미 불러온 그 달 데이터로 대체한다.
+
+  /** 선택 월의 일자별 합계 (날짜 오름차순) */
+  const monthDayTotals: { date: string; total: number }[] = (() => {
+    const map = new Map<string, number>()
+    for (const r of monthRows) {
+      map.set(r.sale_date, (map.get(r.sale_date) ?? 0) + r.total_sales)
+    }
+    return [...map]
+      .map(([date, total]) => ({ date, total }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  })()
+
+  /** 선택 월 특정 날짜의 업장별 매출 맵 */
+  function venueMapOf(date: string): Partial<Record<Venue, number>> {
+    const map: Partial<Record<Venue, number>> = {}
+    for (const r of monthRows) {
+      if (r.sale_date !== date) continue
+      map[r.venue as Venue] = (map[r.venue as Venue] ?? 0) + r.total_sales
+    }
+    return map
+  }
+
+  // 두 번째 도넛 카드의 기준일 — 이번 달은 '오늘', 지난 달은 '그 달 최고 매출일'
+  const bestDay = monthDayTotals.reduce<{ date: string; total: number } | null>(
+    (best, d) => (d.total > 0 && (best === null || d.total > best.total) ? d : best),
+    null,
+  )
+  const spotDate = isCurrentMonth ? today : (bestDay?.date ?? null)
+  const spotMap: Partial<Record<Venue, number>> = isCurrentMonth
+    ? todayMap
+    : (spotDate !== null ? venueMapOf(spotDate) : {})
+  const spotDonut = buildDonutData(spotMap)
+
+  const spotGuest = spotDate !== null
+    ? (notes.find((n) => n.sale_date === spotDate)?.guest_count ?? 0)
+    : 0
+  const spotPerGuest = spotGuest > 0 && spotDonut.total > 0
+    ? Math.round(spotDonut.total / spotGuest)
     : null
+
+  // 매출 추이 차트 — 이번 달은 최근 7일, 지난 달은 그 달 일자별
+  const trendData = isCurrentMonth ? weeklyData : monthDayTotals
 
   // 요일별 평균 매출 — 매출이 실제로 입력된(0원 초과) 날만 평균에 포함
   // (daily_sales는 행이 있어도 전 업장 0원으로 저장될 수 있어 "행 존재"만으로는 휴장일을 걸러내지 못한다)
+  // 모집단: 이번 달은 최근 4주, 지난 달은 그 달 전체
+  const weekdaySource = isCurrentMonth ? recentDayTotals : monthDayTotals
   const weekdayStats = Array.from({ length: 7 }, () => ({ sum: 0, count: 0 }))
-  for (const d of recentDayTotals) {
+  for (const d of weekdaySource) {
     if (d.total <= 0) continue
     const dow = new Date(d.date + 'T00:00:00').getDay()
     weekdayStats[dow].sum += d.total
@@ -390,7 +477,6 @@ export default function DashboardPage() {
     .slice(0, 5)
 
   // ⚠️ 이번 달 가마감 미입력 경고 — ClosingPage와 동일 조건 (로딩 완료 전에는 그리지 않음)
-  const isCurrentMonth = selYear === now.getFullYear() && selMonth === now.getMonth() + 1
   const closingExists = closingRow !== null
   const closingSalesTotal = closingRow?.sales_total ?? 0
   const showClosingWarning =
@@ -402,10 +488,13 @@ export default function DashboardPage() {
 
   // 목표 달성률 계산
   const achieveRate = target > 0 ? Math.min(Math.round((monthDonut.total / target) * 100), 100) : 0
+  // 잔여 일수 — 이번 달에만 의미가 있다 (지난 달은 이미 종료되었으므로 0)
   // 오늘 매출 입력 완료 시 오늘 제외, 미입력 시 오늘 포함
-  const remainDays = todayDonut.total > 0
-    ? daysInMonth - todayNum
-    : daysInMonth - todayNum + 1
+  const remainDays = !isCurrentMonth
+    ? 0
+    : todayDonut.total > 0
+      ? daysInMonth - todayNum
+      : daysInMonth - todayNum + 1
   const remainAmount = Math.max(target - monthDonut.total, 0)
   const dailyNeed = remainDays > 0 && remainAmount > 0
     ? Math.round(remainAmount / remainDays / 10000) // 만원 단위
@@ -445,6 +534,15 @@ export default function DashboardPage() {
     }
   }
 
+  /** 월 전환 — 편집 중이던 목표 입력은 다른 달의 값이 되므로 취소한다 */
+  function handleSelectMonth(year: number, month: number) {
+    if (year === selYear && month === selMonth) return
+    setSelYear(year)
+    setSelMonth(month)
+    setEditingTarget(false)
+    setTargetInput('')
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {toast !== null && (
@@ -455,7 +553,29 @@ export default function DashboardPage() {
       <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
         <div className="max-w-lg mx-auto py-4">
           <p className="text-xs text-gray-400">노스팜CC</p>
-          <h1 className="text-lg font-bold text-gray-900">매출 대시보드</h1>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <h1 className="text-lg font-bold text-gray-900">매출 대시보드</h1>
+            <span className="text-xs font-medium text-gray-400">
+              {selYear}년 {selMonth}월{isCurrentMonth ? '' : ' · 지난 달 보기'}
+            </span>
+          </div>
+        </div>
+        {/* 월 선택 — 최근 12개월. 해가 다른 달은 연도를 함께 표시한다 */}
+        <div ref={monthTabsRef} className="max-w-lg mx-auto flex gap-1 overflow-x-auto pb-2">
+          {monthTabs.map((t) => {
+            const active = t.year === selYear && t.month === selMonth
+            return (
+              <button
+                key={`${t.year}-${t.month}`}
+                onClick={() => handleSelectMonth(t.year, t.month)}
+                className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {t.year !== now.getFullYear() ? `${String(t.year).slice(2)}년 ` : ''}{t.month}월
+              </button>
+            )
+          })}
         </div>
       </header>
 
@@ -497,7 +617,9 @@ export default function DashboardPage() {
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs text-gray-400">{selMonth}월 누적 순매출</p>
+                <p className="text-xs text-gray-400">
+                  {selMonth}월 {isCurrentMonth ? '누적 순매출' : '순매출'}
+                </p>
                 <p className="text-xl font-bold text-gray-900">{formatCurrency(monthDonut.total)}</p>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <p className="text-xs text-gray-400">{inputDays}일 입력 완료</p>
@@ -568,49 +690,69 @@ export default function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-center text-sm text-gray-300 py-6">이번 달 데이터 없음</p>
+              <p className="text-center text-sm text-gray-300 py-6">
+                {isCurrentMonth ? '이번 달' : `${selMonth}월`} 데이터 없음
+              </p>
             )}
           </div>
 
-          {/* 오늘 서브 도넛 */}
+          {/* 기준일 서브 도넛 — 이번 달은 '오늘', 지난 달은 '그 달 최고 매출일' */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs text-gray-400">{formatDate(today)}</p>
-                <p className="text-base font-bold text-gray-900">{formatCurrency(todayDonut.total)}</p>
-                {todayPerGuest !== null && (
+                {isCurrentMonth ? (
+                  <p className="text-xs text-gray-400">{formatDate(today)}</p>
+                ) : spotDate !== null ? (
+                  <p className="text-xs text-gray-400">
+                    <span className="font-semibold text-amber-500">최고 매출일</span>
+                    {' · '}{formatDate(spotDate)}
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400">{selMonth}월 최고 매출일</p>
+                )}
+                <p className="text-base font-bold text-gray-900">{formatCurrency(spotDonut.total)}</p>
+                {spotPerGuest !== null && (
                   <p className="text-xs text-gray-400 mt-0.5">
                     객단가{' '}
                     <span className="font-semibold text-gray-600">
-                      {todayPerGuest.toLocaleString()}원
+                      {spotPerGuest.toLocaleString()}원
                     </span>
-                    <span className="text-gray-300"> · 내장객 {todayGuest.toLocaleString()}명</span>
+                    <span className="text-gray-300"> · 내장객 {spotGuest.toLocaleString()}명</span>
                   </p>
                 )}
               </div>
-              <button
-                onClick={() => navigate('/input')}
-                className="text-xs text-blue-600 font-medium px-3 py-1.5 rounded-lg border border-blue-200 active:bg-blue-50"
-              >
-                {todayDonut.total > 0 ? '수정' : '입력'}
-              </button>
+              {isCurrentMonth ? (
+                <button
+                  onClick={() => navigate('/input')}
+                  className="text-xs text-blue-600 font-medium px-3 py-1.5 rounded-lg border border-blue-200 active:bg-blue-50"
+                >
+                  {spotDonut.total > 0 ? '수정' : '입력'}
+                </button>
+              ) : spotDate !== null ? (
+                <button
+                  onClick={() => navigate(`/detail/${spotDate}`)}
+                  className="text-xs text-blue-600 font-medium px-3 py-1.5 rounded-lg border border-blue-200 active:bg-blue-50"
+                >
+                  상세
+                </button>
+              ) : null}
             </div>
 
-            {todayDonut.total > 0 ? (
+            {spotDonut.total > 0 ? (
               <div className="flex items-center gap-6">
                 <div className="relative w-28 h-28 shrink-0">
-                  <Doughnut data={todayDonut.chartData} options={DONUT_OPTIONS} />
+                  <Doughnut data={spotDonut.chartData} options={DONUT_OPTIONS} />
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <p className="text-[10px] text-gray-400">오늘</p>
+                    <p className="text-[10px] text-gray-400">{isCurrentMonth ? '오늘' : '최고'}</p>
                     <p className="text-xs font-bold text-gray-800 leading-tight">
-                      {(todayDonut.total / 10000).toFixed(0)}만원
+                      {(spotDonut.total / 10000).toFixed(0)}만원
                     </p>
                   </div>
                 </div>
 
                 <div className="flex-1 space-y-2">
                   {VENUES.map((venue) => {
-                    const net = todayMap[venue] ?? 0
+                    const net = spotMap[venue] ?? 0
                     return (
                       <div key={venue} className="flex items-center gap-2">
                         <span
@@ -628,7 +770,9 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="flex flex-col items-center py-4 gap-2">
-                <p className="text-sm text-gray-300">오늘 데이터 미입력</p>
+                <p className="text-sm text-gray-300">
+                  {isCurrentMonth ? '오늘 데이터 미입력' : `${selMonth}월 데이터 없음`}
+                </p>
               </div>
             )}
           </div>
@@ -695,12 +839,20 @@ export default function DashboardPage() {
                         : '아직 입력 없음'}
                     </p>
                   </div>
-                  {achieveRate < 100 && dailyNeed > 0 && (
+                  {isCurrentMonth && achieveRate < 100 && dailyNeed > 0 && (
                     <div className="text-right">
                       <p className="text-sm font-bold text-gray-700">{dailyNeed.toLocaleString()}만원</p>
                       <p className="text-xs text-gray-400">
                         {todayDonut.total > 0 ? `내일부터 ${remainDays}일` : `오늘부터 ${remainDays}일`} 일평균 필요
                       </p>
+                    </div>
+                  )}
+                  {!isCurrentMonth && achieveRate < 100 && remainAmount > 0 && (
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-red-500">
+                        -{Math.round(remainAmount / 10000).toLocaleString()}만원
+                      </p>
+                      <p className="text-xs text-gray-400">목표 미달</p>
                     </div>
                   )}
                   {achieveRate >= 100 && (
@@ -714,21 +866,23 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* 최근 7일 트렌드 */}
-          {weeklyData.some((d) => d.total > 0) && (
+          {/* 매출 추이 — 이번 달은 최근 7일, 지난 달은 그 달 일자별 */}
+          {trendData.some((d) => d.total > 0) && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <p className="text-xs font-bold text-gray-400 mb-3">최근 7일 매출 추이</p>
+              <p className="text-xs font-bold text-gray-400 mb-3">
+                {isCurrentMonth ? '최근 7일 매출 추이' : `${selMonth}월 일자별 매출 추이`}
+              </p>
               <Bar
                 data={{
-                  labels: weeklyData.map((d) => {
+                  labels: trendData.map((d) => {
                     const [, mm, dd] = d.date.split('-')
                     return `${parseInt(mm)}/${parseInt(dd)}`
                   }),
                   datasets: [
                     {
-                      data: weeklyData.map((d) => Math.round(d.total / 10000)), // 만원 단위
-                      backgroundColor: weeklyData.map((d) =>
-                        d.date === today ? '#3B82F6' : '#BFDBFE'
+                      data: trendData.map((d) => Math.round(d.total / 10000)), // 만원 단위
+                      backgroundColor: trendData.map((d) =>
+                        d.date === spotDate ? '#3B82F6' : '#BFDBFE'
                       ),
                       borderRadius: 6,
                       borderSkipped: false,
@@ -767,7 +921,9 @@ export default function DashboardPage() {
           {hasWeekdayData && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-bold text-gray-400">요일별 평균 매출 (최근 4주)</p>
+                <p className="text-xs font-bold text-gray-400">
+                  요일별 평균 매출 ({isCurrentMonth ? '최근 4주' : `${selMonth}월`})
+                </p>
                 <span className="text-[10px] text-amber-500 font-semibold">■ 주말</span>
               </div>
               <Bar
@@ -816,7 +972,9 @@ export default function DashboardPage() {
           {/* 최근 특이사항 (비고) */}
           {memoItems.length > 0 && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <p className="text-xs font-bold text-gray-400 mb-3">최근 특이사항</p>
+              <p className="text-xs font-bold text-gray-400 mb-3">
+                {isCurrentMonth ? '최근 특이사항' : `${selMonth}월 특이사항`}
+              </p>
               <div className="space-y-2">
                 {memoItems.map((item) => {
                   const [, mm, dd] = item.date.split('-')
@@ -875,7 +1033,11 @@ export default function DashboardPage() {
             })}
           </div>
           <p className="text-[10px] text-gray-400 text-center">
-            ※ 전월 대비는 전월 <span className="font-semibold">전체</span> 실적과 이번 달 누적 실적을 비교한 값입니다
+            {isCurrentMonth ? (
+              <>※ 전월 대비는 전월 <span className="font-semibold">전체</span> 실적과 이번 달 누적 실적을 비교한 값입니다</>
+            ) : (
+              <>※ 전월 대비는 {prevMonthLabel} 실적과 {selMonth}월 실적을 비교한 값입니다 (양쪽 모두 월 전체)</>
+            )}
           </p>
 
         </div>

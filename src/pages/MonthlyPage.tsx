@@ -34,23 +34,51 @@ const VENUE_COLORS: Record<Venue, string> = {
   [Venue.CLIENT]:     '#EC4899',
 }
 
+/**
+ * 한 달치 조회 결과 — **어느 달의 데이터인지(key)를 함께** 보관한다.
+ * 이렇게 묶어두면 월을 바꾼 직후 "새 달 제목 + 이전 달 숫자"가 함께 보이는 일이 없다.
+ */
+interface MonthData {
+  key: string                  // 'YYYY-MM'
+  rows: DailySales[]           // 선택한 달
+  prevRows: DailySales[]       // 전월
+  lastYearRows: DailySales[]   // 전년 동월
+  failed: boolean              // 조회 실패 여부
+}
+
+/** 'YYYY-MM' 형식의 월 키 */
+function monthKeyOf(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}`
+}
+
 export default function MonthlyPage() {
   const navigate = useNavigate()
   const today = new Date()
   const [selYear, setSelYear] = useState(today.getFullYear())
   const [selMonth, setSelMonth] = useState(today.getMonth() + 1)
-  const [rows, setRows] = useState<DailySales[]>([])
-  const [prevRows, setPrevRows] = useState<DailySales[]>([])
-  const [lastYearRows, setLastYearRows] = useState<DailySales[]>([])
-  const [loading, setLoading] = useState(false)
+  const [data, setData] = useState<MonthData | null>(null)
   const [expandedDate, setExpandedDate] = useState<string | null>(null)
 
   const tabs = getRecentMonths(6)
   const todayStr = today.toLocaleDateString('sv-SE')
+  const monthKey = monthKeyOf(selYear, selMonth)
+
+  // 화면에는 **선택한 달의 데이터일 때만** 쓴다. 아직 도착 전이면 로딩으로 취급해
+  // 이전 달 숫자가 새 달 제목 아래 남지 않게 한다.
+  const loaded = data !== null && data.key === monthKey ? data : null
+  const loading = loaded === null
+  const loadFailed = loaded?.failed ?? false
+  const rows = loaded?.rows ?? []
+  const prevRows = loaded?.prevRows ?? []
+  const lastYearRows = loaded?.lastYearRows ?? []
+
+  // 월이 바뀌면 펼쳐둔 날짜는 무효 — 선택한 달의 날짜일 때만 펼침을 유지한다
+  const activeExpandedDate =
+    expandedDate !== null && expandedDate.startsWith(monthKey) ? expandedDate : null
 
   useEffect(() => {
-    setLoading(true)
-    setExpandedDate(null) // 월 전환 시 펼침 초기화
+    let cancelled = false
+    const key = monthKeyOf(selYear, selMonth)
     const prevMonth = selMonth === 1 ? 12 : selMonth - 1
     const prevYear = selMonth === 1 ? selYear - 1 : selYear
     Promise.all([
@@ -58,10 +86,14 @@ export default function MonthlyPage() {
       getSalesByMonth(prevYear, prevMonth),
       getSalesByMonth(selYear - 1, selMonth), // 전년 동월
     ]).then(([cur, prev, lastYear]) => {
-      setRows(cur)
-      setPrevRows(prev)
-      setLastYearRows(lastYear)
-    }).finally(() => setLoading(false))
+      if (cancelled) return
+      setData({ key, rows: cur, prevRows: prev, lastYearRows: lastYear, failed: false })
+    }).catch(() => {
+      // 조회 실패 — 이전 달 숫자를 그대로 보여주지 않도록 빈 데이터로 두고 안내 문구를 띄운다
+      if (cancelled) return
+      setData({ key, rows: [], prevRows: [], lastYearRows: [], failed: true })
+    })
+    return () => { cancelled = true }
   }, [selYear, selMonth])
 
   // 날짜별 합계 맵
@@ -140,7 +172,10 @@ export default function MonthlyPage() {
       <div className="px-4 pt-4 max-w-lg mx-auto">
         <div className="bg-blue-600 rounded-2xl p-4 text-white text-center shadow">
           <p className="text-sm text-blue-200">{selMonth}월 순매출 합계</p>
-          <p className="text-2xl font-bold mt-1">{formatCurrency(monthTotal)}</p>
+          {/* 불러오는 중에는 금액 대신 '—' — 이전 달 숫자를 이 달 숫자로 오해하지 않게 한다 */}
+          <p className="text-2xl font-bold mt-1">
+            {loading ? '—' : formatCurrency(monthTotal)}
+          </p>
           <div className="flex justify-center gap-4 mt-1.5">
             {changeRate !== null && (
               <p className={`text-sm whitespace-nowrap ${changeRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
@@ -155,6 +190,18 @@ export default function MonthlyPage() {
           </div>
         </div>
       </div>
+
+      {/* 조회 실패 안내 — 빈 화면을 '전부 미입력'으로 오해하지 않게 한다 */}
+      {loadFailed && (
+        <div className="px-4 pt-3 max-w-lg mx-auto">
+          <div className="bg-red-50 rounded-2xl p-3 border border-red-200">
+            <p className="text-sm font-bold text-red-600">데이터를 불러오지 못했습니다</p>
+            <p className="mt-0.5 text-xs text-red-500">
+              네트워크 상태를 확인하고 새로고침해주세요.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 엑셀 내보내기 */}
       <div className="px-4 pt-3 max-w-lg mx-auto flex justify-end">
@@ -188,7 +235,7 @@ export default function MonthlyPage() {
                 const isPast = day.date < todayStr
                 const isToday = day.date === todayStr
                 const missing = isPast && !day.hasData
-                const isExpanded = expandedDate === day.date
+                const isExpanded = activeExpandedDate === day.date
                 const vMap = venueMap.get(day.date) ?? {}
 
                 return (
