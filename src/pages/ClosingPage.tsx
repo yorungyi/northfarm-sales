@@ -6,6 +6,7 @@ import {
   upsertMonthlyClosing,
   getSalesByMonth,
   getRecentClosings,
+  getClosingsByYear,
   getClosingTarget,
   upsertClosingTarget,
 } from '../lib/api'
@@ -306,12 +307,25 @@ export default function ClosingPage() {
   // 가마감 조회가 성공적으로 끝났는지 — 로딩 중·조회 실패 시 경고 배너를 그리지 않기 위한 플래그
   const [closingLoaded, setClosingLoaded] = useState(false)
 
+  // 연 누적용 — 어느 해의 데이터인지(year)를 함께 보관해, 연도 전환 직후 이전 해 숫자가 남지 않게 한다
+  const [yearData, setYearData] = useState<{ year: number; rows: MonthlyClosing[] } | null>(null)
+
   const tabs = getRecentMonths(6)
 
   // 최근 14개월 가마감 초기 로드 (전년 동기 비교용)
   useEffect(() => {
     getRecentClosings(14).then(setHistory).catch(e => console.error('히스토리 로드 실패', e))
   }, [])
+
+  // 선택 연도의 가마감 전체 로드 (연 누적 계산용)
+  useEffect(() => {
+    let cancelled = false
+    const year = selYear
+    getClosingsByYear(year)
+      .then(rows => { if (!cancelled) setYearData({ year, rows }) })
+      .catch(e => console.error('연 누적 로드 실패', e))
+    return () => { cancelled = true }
+  }, [selYear])
 
   // 탭 전환 시 데이터 + 목표 로드
   useEffect(() => {
@@ -388,6 +402,24 @@ export default function ClosingPage() {
 
   const calc = calcClosing(fields)
 
+  // ── 연 누적 (1월 ~ 선택한 달) ──────────────────────────────
+  // 선택한 달은 저장값 대신 화면의 입력값(fields)을 쓴다 — 아직 저장하지 않은 수정분도 즉시 반영된다.
+  // (그래서 이전 달들만 저장된 행에서 합산하고, 선택한 달은 calc/fields로 더한다)
+  const yearClosings = yearData !== null && yearData.year === selYear ? yearData.rows : []
+  const priorClosings = yearClosings.filter(c => c.month < selMonth)
+
+  const ytdSales  = priorClosings.reduce((s, c) => s + c.sales_total, 0) + fields.sales_total
+  const ytdProfit = priorClosings.reduce((s, c) => s + calcClosing(c).profit, 0) + calc.profit
+  const ytdProfitRate = ytdSales !== 0 ? Math.round((ytdProfit / ytdSales) * 1000) / 10 : 0
+
+  // 누적 숫자가 몇 달치인지 분명히 한다 — 매출이 0인 달은 미입력으로 본다
+  const enteredMonths = new Set(priorClosings.filter(c => c.sales_total !== 0).map(c => c.month))
+  if (fields.sales_total !== 0) enteredMonths.add(selMonth)
+  const missingMonths: number[] = []
+  for (let m = 1; m <= selMonth; m++) {
+    if (!enteredMonths.has(m)) missingMonths.push(m)
+  }
+  const ytdRangeLabel = selMonth === 1 ? '1월' : `1~${selMonth}월`
 
   const handleSave = useCallback(async () => {
     setSaving(true)
@@ -395,6 +427,9 @@ export default function ClosingPage() {
       await upsertMonthlyClosing(fields)
       setClosingExists(true)
       getRecentClosings(14).then(setHistory).catch(() => {})
+      getClosingsByYear(fields.year)
+        .then(rows => setYearData({ year: fields.year, rows }))
+        .catch(() => {})
       setToast({ message: '저장되었습니다!', type: 'success' })
     } catch (e) {
       const msg = e instanceof Error ? e.message : '알 수 없는 오류'
@@ -733,6 +768,45 @@ export default function ClosingPage() {
               </div>
             ) : null}
           </div>
+        </div>
+
+        {/* 📊 연 누적 — 1월부터 선택한 달까지 쌓인 매출·매출이익 */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-bold text-gray-400">
+              📊 {selYear}년 누적 ({ytdRangeLabel})
+            </p>
+            <span className="text-[10px] text-gray-300">단위: 천원</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">누적 매출</span>
+              <span className="text-base font-bold text-gray-800">
+                {ytdSales.toLocaleString()}천원
+              </span>
+            </div>
+            <div className="flex justify-between items-center pt-1.5 border-t border-gray-100">
+              <span className="text-sm font-semibold text-gray-700">누적 매출이익</span>
+              <span className={`text-xl font-bold ${ytdProfit >= 0 ? 'text-blue-600' : 'text-red-500'}`}>
+                {ytdProfit.toLocaleString()}천원
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-gray-400">누적 이익률</span>
+              <span className={`text-sm font-bold ${ytdProfit >= 0 ? 'text-blue-600' : 'text-red-500'}`}>
+                {ytdSales !== 0 ? `${ytdProfitRate.toFixed(1)}%` : '-'}
+              </span>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-gray-400 mt-2.5 leading-relaxed">
+            매출이익 = 매출 − 식재료비 − 인건비 − 제조경비
+            <br />
+            {missingMonths.length === 0
+              ? `${ytdRangeLabel} ${selMonth}개월 전부 반영되었습니다`
+              : `${selMonth}개월 중 ${selMonth - missingMonths.length}개월 반영 · ${missingMonths.join('·')}월 미입력`}
+          </p>
         </div>
 
         {/* 엑셀 내보내기 — 최근 14개월 가마감 */}

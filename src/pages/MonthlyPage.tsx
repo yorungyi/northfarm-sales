@@ -337,10 +337,27 @@ export default function MonthlyPage() {
                 )
               })}
 
-              {/* 합계 행 */}
-              <div className="grid grid-cols-2 px-4 py-3 bg-gray-50 text-sm font-bold">
+              {/* 합계 행 — 올해 합계 옆에 전년 동월 합계를 나란히 둔다 (일자별 행과 같은 열 배치) */}
+              <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-2 px-4 py-3 bg-gray-50 text-sm font-bold">
                 <span className="text-gray-700">합계</span>
-                <span className="text-right text-blue-600">{monthTotal.toLocaleString()}원</span>
+                <span className="text-right text-blue-600 whitespace-nowrap">
+                  {monthTotal.toLocaleString()}원
+                </span>
+                <span className="text-right text-xs whitespace-nowrap">
+                  {lastYearTotal > 0 ? (
+                    <span className={
+                      yoyRate === null ? 'text-gray-400'
+                        : yoyRate >= 0 ? 'text-green-500'
+                        : 'text-red-400'
+                    }>
+                      작년 {Math.round(lastYearTotal / 1000).toLocaleString()}천
+                      {yoyRate !== null && ` (${yoyRate >= 0 ? '↑' : '↓'}${Math.abs(yoyRate)}%)`}
+                    </span>
+                  ) : (
+                    <span className="text-gray-300">작년 -</span>
+                  )}
+                </span>
+                <span />
               </div>
             </>
           )}

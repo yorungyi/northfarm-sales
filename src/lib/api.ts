@@ -232,6 +232,20 @@ export async function getRecentClosings(count: number): Promise<MonthlyClosing[]
   return ((data ?? []) as MonthlyClosing[]).reverse()
 }
 
+/**
+ * 특정 연도의 가마감 전체 조회 (월 오름차순).
+ * 연 누적 계산용 — getRecentClosings(N)은 '최근 N개월'이라 연초가 잘릴 수 있어 별도로 둔다.
+ */
+export async function getClosingsByYear(year: number): Promise<MonthlyClosing[]> {
+  const { data, error } = await supabase
+    .from('monthly_closing')
+    .select('*')
+    .eq('year', year)
+    .order('month', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as MonthlyClosing[]
+}
+
 export interface ClosingTargetRow {
   year: number
   month: number
