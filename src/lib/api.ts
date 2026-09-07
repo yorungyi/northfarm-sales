@@ -249,6 +249,25 @@ export async function getRecentClosings(count: number): Promise<MonthlyClosing[]
 }
 
 /**
+ * 선택한 달을 끝으로 하는 최근 count개월 가마감 (월 오름차순).
+ * getRecentClosings(N)은 '오늘 기준'이라 지난 해를 보고 있으면 화면과 추세 차트가 어긋난다.
+ */
+export async function getClosingsUpTo(
+  year: number, month: number, count: number,
+): Promise<MonthlyClosing[]> {
+  const { data, error } = await supabase
+    .from('monthly_closing')
+    .select('*')
+    // (year, month)가 선택 월 이하인 행 — 연 경계를 넘어가도 이어서 가져온다
+    .or(`year.lt.${year},and(year.eq.${year},month.lte.${month})`)
+    .order('year', { ascending: false })
+    .order('month', { ascending: false })
+    .limit(count)
+  if (error) throw error
+  return ((data ?? []) as MonthlyClosing[]).reverse()
+}
+
+/**
  * 특정 연도의 가마감 전체 조회 (월 오름차순).
  * 연 누적 계산용 — getRecentClosings(N)은 '최근 N개월'이라 연초가 잘릴 수 있어 별도로 둔다.
  */

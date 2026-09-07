@@ -5,7 +5,7 @@ import {
   getMonthlyClosing,
   upsertMonthlyClosing,
   getSalesByMonth,
-  getRecentClosings,
+  getClosingsUpTo,
   getClosingsByYear,
   getClosingTarget,
   upsertClosingTarget,
@@ -14,6 +14,7 @@ import { downloadCsv } from '../utils/exportCsv'
 import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
 import ClosingTrendChart from '../components/ClosingTrendChart'
+import MonthYearPicker from '../components/MonthYearPicker'
 
 // ── 숫자 입력 헬퍼 ─────────────────────────────────────────
 function fmtAbs(n: number) {
@@ -276,19 +277,8 @@ const EMPTY_FIELDS = (year: number, month: number): Fields => ({
   manufacturing_cost: 0,
 })
 
-/**
- * 최근 count개월 목록 (오래된 달 → 이번 달 순).
- * 각 달의 1일을 기준으로 계산해 31일 등 말일에 실행해도 월이 건너뛰거나 중복되지 않는다.
- */
-function getRecentMonths(count: number): { year: number; month: number }[] {
-  const now = new Date()
-  const result: { year: number; month: number }[] = []
-  for (let i = 0; i < count; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    result.unshift({ year: d.getFullYear(), month: d.getMonth() + 1 })
-  }
-  return result
-}
+/** 추세 차트·엑셀에 담을 개월 수 (선택한 달을 끝으로 과거 방향) */
+const HISTORY_MONTHS = 14
 
 export default function ClosingPage() {
   const now = new Date()
@@ -310,12 +300,15 @@ export default function ClosingPage() {
   // 연 누적용 — 어느 해의 데이터인지(year)를 함께 보관해, 연도 전환 직후 이전 해 숫자가 남지 않게 한다
   const [yearData, setYearData] = useState<{ year: number; rows: MonthlyClosing[] } | null>(null)
 
-  const tabs = getRecentMonths(6)
-
-  // 최근 14개월 가마감 초기 로드 (전년 동기 비교용)
+  // 선택한 달을 끝으로 하는 14개월 가마감 (추세 차트·엑셀용).
+  // 오늘 기준으로 뽑으면 지난 해를 보고 있을 때 차트가 딴 해를 그린다.
   useEffect(() => {
-    getRecentClosings(14).then(setHistory).catch(e => console.error('히스토리 로드 실패', e))
-  }, [])
+    let cancelled = false
+    getClosingsUpTo(selYear, selMonth, HISTORY_MONTHS)
+      .then(rows => { if (!cancelled) setHistory(rows) })
+      .catch(e => console.error('히스토리 로드 실패', e))
+    return () => { cancelled = true }
+  }, [selYear, selMonth])
 
   // 선택 연도의 가마감 전체 로드 (연 누적 계산용)
   useEffect(() => {
@@ -426,7 +419,7 @@ export default function ClosingPage() {
     try {
       await upsertMonthlyClosing(fields)
       setClosingExists(true)
-      getRecentClosings(14).then(setHistory).catch(() => {})
+      getClosingsUpTo(fields.year, fields.month, HISTORY_MONTHS).then(setHistory).catch(() => {})
       getClosingsByYear(fields.year)
         .then(rows => setYearData({ year: fields.year, rows }))
         .catch(() => {})
@@ -471,7 +464,7 @@ export default function ClosingPage() {
     closingLoaded &&
     isCurrentMonth && !closingExists && fields.sales_total === 0 && now.getDate() >= CLOSING_WARN_DAY
 
-  /** 최근 14개월 가마감 전체를 CSV로 내려받기 */
+  /** 선택한 달을 끝으로 하는 14개월 가마감을 CSV로 내려받기 */
   function handleExportCsv() {
     const headers = ['년', '월', '매출', '식재료비', '인건비합계', '제조경비', '예상이익', '이익률(%)']
     const rows: (string | number)[][] = history.map((h) => {
@@ -487,7 +480,7 @@ export default function ClosingPage() {
         c.profit_rate.toFixed(1),
       ]
     })
-    downloadCsv('노스팜CC_가마감_최근14개월.csv', headers, rows)
+    downloadCsv(`노스팜CC_가마감_${selYear}년${selMonth}월까지_${HISTORY_MONTHS}개월.csv`, headers, rows)
   }
 
   return (
@@ -496,26 +489,13 @@ export default function ClosingPage() {
 
       {/* 헤더 */}
       <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
-        <div className="max-w-lg mx-auto py-4">
-          <h1 className="text-lg font-bold text-gray-900">가마감</h1>
-          <p className="text-xs text-gray-400">손익 예상치 — 단위: 천원</p>
-        </div>
-        <div className="max-w-lg mx-auto flex gap-1 overflow-x-auto pb-2">
-          {tabs.map((t) => {
-            const active = t.year === selYear && t.month === selMonth
-            return (
-              <button
-                key={`${t.year}-${t.month}`}
-                onClick={() => { setSelYear(t.year); setSelMonth(t.month) }}
-                className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
-                }`}
-              >
-                {t.month}월
-              </button>
-            )
-          })}
-        </div>
+        <MonthYearPicker
+          title="가마감"
+          subtitle="손익 예상치 — 단위: 천원"
+          year={selYear}
+          month={selMonth}
+          onChange={(y, m) => { setSelYear(y); setSelMonth(m) }}
+        />
       </header>
 
       <div className="px-4 pt-4 max-w-lg mx-auto space-y-3">
@@ -809,13 +789,13 @@ export default function ClosingPage() {
           </p>
         </div>
 
-        {/* 엑셀 내보내기 — 최근 14개월 가마감 */}
+        {/* 엑셀 내보내기 — 선택한 달을 끝으로 하는 14개월 가마감 */}
         <button
           onClick={handleExportCsv}
           disabled={history.length === 0}
           className="w-full py-3 rounded-2xl bg-white text-blue-600 font-bold text-sm shadow-sm border border-blue-200 active:scale-95 transition-transform disabled:opacity-40"
         >
-          엑셀 내보내기 (최근 14개월)
+          엑셀 내보내기 ({HISTORY_MONTHS}개월)
         </button>
 
         {/* 버튼 영역 */}
