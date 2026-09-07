@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { DailySales } from '../types/sales'
 import { Venue, VENUES } from '../types/sales'
-import { getSalesByMonth } from '../lib/api'
+import { getSalesByMonth, getEarliestSaleDate } from '../lib/api'
 import { formatCurrency, calcChangeRate } from '../utils/format'
 import { downloadCsv } from '../utils/exportCsv'
 import BottomNav from '../components/BottomNav'
@@ -11,19 +11,14 @@ function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
 
+/** 월 선택 칩에 늘 12개월을 모두 깔아둔다 (1월 ~ 12월) */
+const ALL_MONTHS: number[] = Array.from({ length: 12 }, (_, i) => i + 1)
+
 /**
- * 최근 count개월 목록 (오래된 달 → 이번 달 순).
- * 각 달의 1일을 기준으로 계산해 31일 등 말일에 실행해도 월이 건너뛰거나 중복되지 않는다.
+ * 첫 매출일 조회가 끝나기 전에 쓸 잠정 연도 하한 (올해로부터 몇 년 전까지).
+ * 조회가 성공하면 실제 첫 데이터 연도로 넓혀진다.
  */
-function getRecentMonths(count: number): { year: number; month: number }[] {
-  const now = new Date()
-  const result: { year: number; month: number }[] = []
-  for (let i = 0; i < count; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    result.unshift({ year: d.getFullYear(), month: d.getMonth() + 1 })
-  }
-  return result
-}
+const FALLBACK_YEAR_SPAN = 1
 
 // 업장별 색상 (도넛 차트와 동일)
 const VENUE_COLORS: Record<Venue, string> = {
@@ -59,7 +54,50 @@ export default function MonthlyPage() {
   const [data, setData] = useState<MonthData | null>(null)
   const [expandedDate, setExpandedDate] = useState<string | null>(null)
 
-  const tabs = getRecentMonths(6)
+  const currentYear = today.getFullYear()
+  const currentMonth = today.getMonth() + 1
+
+  // 고를 수 있는 연도 하한 — 데이터가 있는 첫 해. 조회 전에는 작년까지만 열어둔다.
+  const [firstYear, setFirstYear] = useState(currentYear - FALLBACK_YEAR_SPAN)
+
+  // 첫 매출일을 한 번만 조회해 연도 범위를 넓힌다.
+  // 실패해도 화면은 그대로 돌아가야 하므로 잠정 범위를 유지한다.
+  useEffect(() => {
+    let cancelled = false
+    getEarliestSaleDate()
+      .then((date) => {
+        if (cancelled || date === null) return
+        const year = Number(date.slice(0, 4))
+        if (Number.isFinite(year) && year < currentYear) setFirstYear(year)
+      })
+      .catch(() => { /* 조회 실패 — 잠정 범위(작년~올해) 유지 */ })
+    return () => { cancelled = true }
+  }, [currentYear])
+
+  // 월 칩 가로 스크롤 — 첫 렌더에서만 오른쪽 끝(연말 방향)으로 보내 이번 달이 보이게 한다
+  const monthChipsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = monthChipsRef.current
+    if (el) el.scrollLeft = el.scrollWidth
+  }, [])
+
+  const canGoPrevYear = selYear > firstYear
+  const canGoNextYear = selYear < currentYear
+
+  /** 그 해에 고를 수 있는 마지막 달 — 올해는 이번 달까지, 지난 해는 12월까지 */
+  function lastSelectableMonth(year: number): number {
+    return year === currentYear ? currentMonth : 12
+  }
+
+  /** 연도 이동 — 넘어간 해에 없는 미래 달이면 그 해의 마지막 달로 당긴다 */
+  function shiftYear(delta: number) {
+    const nextYear = selYear + delta
+    if (nextYear < firstYear || nextYear > currentYear) return
+    const maxMonth = lastSelectableMonth(nextYear)
+    setSelYear(nextYear)
+    if (selMonth > maxMonth) setSelMonth(maxMonth)
+  }
+
   const todayStr = today.toLocaleDateString('sv-SE')
   const monthKey = monthKeyOf(selYear, selMonth)
 
@@ -147,21 +185,50 @@ export default function MonthlyPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
-        <div className="max-w-lg mx-auto py-4">
+        <div className="max-w-lg mx-auto py-4 flex items-center justify-between gap-2">
           <h1 className="text-lg font-bold text-gray-900">월별 현황</h1>
+          {/* 연도 이동 — 데이터가 있는 첫 해부터 올해까지 */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => shiftYear(-1)}
+              disabled={!canGoPrevYear}
+              aria-label="이전 연도"
+              className="w-9 h-9 rounded-full text-gray-600 text-lg leading-none bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-30"
+            >
+              ‹
+            </button>
+            <span className="w-16 text-center text-sm font-bold text-gray-900 tabular-nums">
+              {selYear}년
+            </span>
+            <button
+              onClick={() => shiftYear(1)}
+              disabled={!canGoNextYear}
+              aria-label="다음 연도"
+              className="w-9 h-9 rounded-full text-gray-600 text-lg leading-none bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-30"
+            >
+              ›
+            </button>
+          </div>
         </div>
-        <div className="max-w-lg mx-auto flex gap-1 overflow-x-auto pb-2">
-          {tabs.map((t) => {
-            const active = t.year === selYear && t.month === selMonth
+        {/* 월 선택 — 1~12월 전부. 아직 오지 않은 달만 눌리지 않게 막는다 */}
+        <div ref={monthChipsRef} className="max-w-lg mx-auto flex gap-1 overflow-x-auto pb-2">
+          {ALL_MONTHS.map((m) => {
+            const active = m === selMonth
+            const future = m > lastSelectableMonth(selYear)
             return (
               <button
-                key={`${t.year}-${t.month}`}
-                onClick={() => { setSelYear(t.year); setSelMonth(t.month) }}
+                key={m}
+                onClick={() => setSelMonth(m)}
+                disabled={future}
                 className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+                  active
+                    ? 'bg-blue-600 text-white'
+                    : future
+                      ? 'bg-gray-50 text-gray-300'
+                      : 'bg-gray-100 text-gray-500'
                 }`}
               >
-                {t.month}월
+                {m}월
               </button>
             )
           })}
@@ -171,7 +238,9 @@ export default function MonthlyPage() {
       {/* 월 합계 카드 */}
       <div className="px-4 pt-4 max-w-lg mx-auto">
         <div className="bg-blue-600 rounded-2xl p-4 text-white text-center shadow">
-          <p className="text-sm text-blue-200">{selMonth}월 순매출 합계</p>
+          <p className="text-sm text-blue-200">
+            {selYear !== currentYear ? `${selYear}년 ` : ''}{selMonth}월 순매출 합계
+          </p>
           {/* 불러오는 중에는 금액 대신 '—' — 이전 달 숫자를 이 달 숫자로 오해하지 않게 한다 */}
           <p className="text-2xl font-bold mt-1">
             {loading ? '—' : formatCurrency(monthTotal)}

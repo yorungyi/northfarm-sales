@@ -183,6 +183,22 @@ export async function getSalesByMonth(year: number, month: number): Promise<Dail
   return (data ?? []) as DailySales[]
 }
 
+/**
+ * 데이터가 존재하는 가장 이른 매출일 (YYYY-MM-DD).
+ * 월별 화면에서 "몇 년도까지 거슬러 볼 수 있는지"를 코드에 박아두지 않고 DB에서 정하기 위한 조회.
+ * 데이터가 한 건도 없으면 null.
+ */
+export async function getEarliestSaleDate(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('daily_sales')
+    .select('sale_date')
+    .order('sale_date', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return (data as { sale_date: string } | null)?.sale_date ?? null
+}
+
 /** 날짜 범위 조회 (startDate 이상 endDate 미만, YYYY-MM-DD) */
 export async function getSalesByRange(startDate: string, endDate: string): Promise<DailySales[]> {
   const { data, error } = await supabase
