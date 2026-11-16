@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Doughnut, Bar } from 'react-chartjs-2'
+import { Bar } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
-  ArcElement,
   Tooltip,
   Legend,
   BarElement,
@@ -26,35 +25,16 @@ import {
 import { formatCurrency, formatDate, toDateString, calcChangeRate } from '../utils/format'
 import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
+import { SectionHead, Stat } from '../components/Ledger'
+import { VENUE_SWATCH, BTN_OUTLINE, BTN_FILLED, formatDelta, readChartTokens, barOptions } from '../lib/ledger'
 
-ChartJS.register(ArcElement, Tooltip, Legend, BarElement, CategoryScale, LinearScale)
-
-// 업장별 색상
-const VENUE_COLORS: Record<Venue, string> = {
-  [Venue.CLUBHOUSE]:  '#3B82F6', // blue
-  [Venue.STARTHOUSE]: '#10B981', // emerald
-  [Venue.EAST_SHADE]: '#F59E0B', // amber
-  [Venue.WEST_SHADE]: '#8B5CF6', // violet
-  [Venue.CLIENT]:     '#EC4899', // rose
-}
-
-const VENUE_COLORS_LIGHT: Record<Venue, string> = {
-  [Venue.CLUBHOUSE]:  '#DBEAFE',
-  [Venue.STARTHOUSE]: '#D1FAE5',
-  [Venue.EAST_SHADE]: '#FEF3C7',
-  [Venue.WEST_SHADE]: '#EDE9FE',
-  [Venue.CLIENT]:     '#FCE7F3',
-}
+ChartJS.register(Tooltip, Legend, BarElement, CategoryScale, LinearScale)
 
 /** 이번 달 가마감 미입력 경고를 띄우기 시작하는 날짜(일) — ClosingPage와 동일 기준 */
 const CLOSING_WARN_DAY = 25
 
 /** 요일 라벨 (Date.getDay() 인덱스 순서) */
 const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
-
-/** 요일별 평균 매출 차트 색상 — 주말(일·토)만 amber로 구분 */
-const WEEKDAY_BAR_COLOR = '#BFDBFE'
-const WEEKEND_BAR_COLOR = '#F59E0B'
 
 /** 최근 4주 = 28일 */
 const WEEKDAY_RANGE_DAYS = 28
@@ -81,42 +61,11 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
+/** 업장별 금액 맵의 합계 (도넛을 걷어낸 뒤에도 기존 변수명을 유지하기 위해 이름은 그대로 둔다) */
 function buildDonutData(map: Partial<Record<Venue, number>>) {
-  const labels = VENUES.map((v) => v)
   const data = VENUES.map((v) => map[v] ?? 0)
   const total = data.reduce((s, n) => s + n, 0)
-
-  return {
-    labels,
-    data,
-    total,
-    chartData: {
-      labels,
-      datasets: [
-        {
-          data,
-          backgroundColor: VENUES.map((v) => VENUE_COLORS[v]),
-          borderColor: '#ffffff',
-          borderWidth: 3,
-          hoverOffset: 6,
-        },
-      ],
-    },
-  }
-}
-
-const DONUT_OPTIONS = {
-  cutout: '68%',
-  plugins: {
-    legend: { display: false },
-    tooltip: {
-      callbacks: {
-        label: (ctx: { label: string; raw: unknown }) =>
-          `${ctx.label}: ${Number(ctx.raw).toLocaleString()}원`,
-      },
-    },
-  },
-  animation: { duration: 600 },
+  return { data, total }
 }
 
 // ── 레거시 월 목표 localStorage (읽기·삭제 전용) ─────────────
@@ -156,6 +105,8 @@ function thousandToWon(thousand: number): number {
 
 export default function DashboardPage() {
   const navigate = useNavigate()
+  // 차트 색·글꼴은 토큰에서 한 번만 읽는다
+  const chartTokens = useMemo(readChartTokens, [])
   const today = toDateString(new Date())
   const now = new Date()
   const [selYear, setSelYear] = useState(now.getFullYear())
@@ -169,9 +120,16 @@ export default function DashboardPage() {
   const monthTabsRef = useRef<HTMLDivElement>(null)
 
   // 첫 렌더에서만 월 탭을 오른쪽 끝(이번 달)으로 이동 — 이후 사용자의 스크롤 위치는 건드리지 않는다
+  // 웹폰트가 늦게 붙으면 탭 폭이 늘어나므로, 글꼴 로드 후 한 번 더 맞춘다
   useEffect(() => {
-    const el = monthTabsRef.current
-    if (el) el.scrollLeft = el.scrollWidth
+    const toEnd = () => {
+      const el = monthTabsRef.current
+      if (el) el.scrollLeft = el.scrollWidth
+    }
+    toEnd()
+    let cancelled = false
+    document.fonts?.ready.then(() => { if (!cancelled) toEnd() }).catch(() => {})
+    return () => { cancelled = true }
   }, [])
 
   const [todayMap, setTodayMap] = useState<Partial<Record<Venue, number>>>({})
@@ -543,33 +501,50 @@ export default function DashboardPage() {
     setTargetInput('')
   }
 
+  // 전년 동월 대비 (null이면 전년 데이터 없음)
+  const yoy = calcChangeRate(monthDonut.total, lastYearTotal)
+
+  // 목표 진행 막대 색 — 달성 잉크, 70% 이상 짙은 회청, 그 아래는 빨간 펜
+  const progressTone =
+    achieveRate >= 100 ? 'bg-ink' : achieveRate >= 70 ? 'bg-series-2' : 'bg-accent'
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-paper text-ink pb-24">
       {toast !== null && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
 
       {/* 헤더 */}
-      <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
-        <div className="max-w-lg mx-auto py-4">
-          <p className="text-xs text-gray-400">노스팜CC</p>
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <h1 className="text-lg font-bold text-gray-900">매출 대시보드</h1>
-            <span className="text-xs font-medium text-gray-400">
-              {selYear}년 {selMonth}월{isCurrentMonth ? '' : ' · 지난 달 보기'}
-            </span>
+      <header className="bg-paper border-b-2 border-rule-2 px-4 pt-safe-top">
+        <div className="max-w-lg mx-auto pt-5 pb-2">
+          <p className="text-xs text-muted">노스팜CC</p>
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <h1 className="text-xl font-semibold text-ink">매출 대시보드</h1>
+            <p className="text-sm text-muted">
+              <span className="num">{selYear}</span>년 <span className="num">{selMonth}</span>월
+              {isCurrentMonth ? null : <span className="ml-2 text-accent">지난 달 보기</span>}
+            </p>
           </div>
         </div>
-        {/* 월 선택 — 최근 12개월. 해가 다른 달은 연도를 함께 표시한다 */}
-        <div ref={monthTabsRef} className="max-w-lg mx-auto flex gap-1 overflow-x-auto pb-2">
+        {/* 월 선택 — 최근 12개월. 해가 다른 달은 연도를 함께 표시한다. 선택한 달은 빨간 밑줄 */}
+        <div
+          ref={monthTabsRef}
+          role="group"
+          aria-label="월 선택"
+          className="max-w-lg mx-auto flex overflow-x-auto -mb-[2px] [scrollbar-width:none]"
+        >
           {monthTabs.map((t) => {
             const active = t.year === selYear && t.month === selMonth
             return (
               <button
                 key={`${t.year}-${t.month}`}
+                type="button"
+                aria-pressed={active}
                 onClick={() => handleSelectMonth(t.year, t.month)}
-                className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'
+                className={`shrink-0 px-3 min-h-11 text-sm border-b-2 transition-colors ${
+                  active
+                    ? 'border-accent text-ink font-semibold'
+                    : 'border-transparent text-muted hover:text-ink hover:border-rule'
                 }`}
               >
                 {t.year !== now.getFullYear() ? `${String(t.year).slice(2)}년 ` : ''}{t.month}월
@@ -579,17 +554,18 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ⚠️ 이번 달 가마감 미입력 경고 */}
+      {/* 이번 달 가마감 미입력 경고 */}
       {showClosingWarning ? (
-        <div className="px-4 pt-4 max-w-lg mx-auto">
+        <div className="px-4 mt-4 max-w-lg mx-auto">
           <button
+            type="button"
             onClick={() => navigate('/closing')}
-            className="w-full text-left bg-amber-50 rounded-2xl p-4 shadow-sm border border-amber-200 active:bg-amber-100 transition-colors"
+            className="w-full text-left bg-paper-2 border-t-2 border-accent px-4 py-3 hover:bg-paper-3 active:bg-paper-3 transition-colors"
           >
-            <p className="text-sm font-bold text-amber-700">
-              ⚠️ 이번 달 가마감이 아직 입력되지 않았습니다
+            <p className="text-sm font-semibold text-accent">
+              이번 달 가마감이 아직 입력되지 않았습니다
             </p>
-            <p className="mt-1 text-xs text-amber-600">
+            <p className="mt-1 text-xs text-ink-2">
               {selYear}년 {selMonth}월 손익 예상치를 입력하고 저장해주세요. (탭하면 가마감으로 이동)
             </p>
           </button>
@@ -598,10 +574,10 @@ export default function DashboardPage() {
 
       {/* 일부 데이터 조회 실패 안내 */}
       {!loading && loadFailed ? (
-        <div className="px-4 pt-4 max-w-lg mx-auto">
-          <div className="bg-red-50 rounded-2xl p-4 shadow-sm border border-red-200">
-            <p className="text-sm font-bold text-red-600">일부 데이터를 불러오지 못했습니다</p>
-            <p className="mt-1 text-xs text-red-500">
+        <div className="px-4 mt-4 max-w-lg mx-auto">
+          <div role="alert" className="bg-paper-2 border-t-2 border-accent px-4 py-3">
+            <p className="text-sm font-semibold text-accent">일부 데이터를 불러오지 못했습니다</p>
+            <p className="mt-1 text-xs text-ink-2">
               화면의 일부 수치가 비어 있을 수 있습니다. 새로고침해주세요.
             </p>
           </div>
@@ -609,183 +585,154 @@ export default function DashboardPage() {
       ) : null}
 
       {loading ? (
-        <div className="py-20 text-center text-sm text-gray-400">데이터 불러오는 중...</div>
+        // 로딩 — 장부 머리 모양의 빈 칸
+        <div className="px-4 mt-5 max-w-lg mx-auto" aria-busy="true">
+          <div className="bg-sheet border-t-2 border-ink px-4 py-5">
+            <div className="h-3 w-24 bg-paper-2" />
+            <div className="mt-3 h-8 w-52 bg-paper-2" />
+            <div className="mt-5 h-3 w-full bg-paper-2" />
+            <div className="mt-3 h-3 w-full bg-paper-2" />
+          </div>
+          <p className="mt-3 text-sm text-muted">데이터 불러오는 중…</p>
+        </div>
       ) : (
-        <div className="px-4 pt-4 max-w-lg mx-auto space-y-4">
+        <main className="px-4 max-w-lg mx-auto">
 
-          {/* 이번 달 메인 도넛 */}
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-xs text-gray-400">
-                  {selMonth}월 {isCurrentMonth ? '누적 순매출' : '순매출'}
-                </p>
-                <p className="text-xl font-bold text-gray-900">{formatCurrency(monthDonut.total)}</p>
-                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <p className="text-xs text-gray-400">{inputDays}일 입력 완료</p>
-                  {missingDays > 0 && (
-                    <button
-                      onClick={() => navigate('/monthly')}
-                      className="text-xs font-semibold text-red-500 underline underline-offset-2"
-                    >
-                      {missingDays}일 미입력
-                    </button>
-                  )}
-                  {/* 전년 동월 대비 */}
-                  {(() => {
-                    const yoy = calcChangeRate(monthDonut.total, lastYearTotal)
-                    if (yoy === null) return null
-                    return (
-                      <span className={`text-xs font-semibold ${yoy >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                        전년 {yoy >= 0 ? '↑' : '↓'}{Math.abs(yoy)}%
-                      </span>
-                    )
-                  })()}
-                </div>
-                {/* 객단가 = 순매출 ÷ 내장객 수 */}
-                <p className="text-xs text-gray-400 mt-0.5">
-                  객단가{' '}
-                  <span className="font-semibold text-gray-600">
-                    {monthPerGuest !== null ? `${monthPerGuest.toLocaleString()}원` : '-'}
-                  </span>
-                  {monthGuestTotal > 0 && (
-                    <span className="text-gray-300"> · 내장객 {monthGuestTotal.toLocaleString()}명</span>
-                  )}
-                </p>
-              </div>
-              <span className="text-xs bg-blue-50 text-blue-600 font-medium px-2.5 py-1 rounded-full shrink-0">
-                최고 {topVenue}
-              </span>
+          {/* ── 월 장부: 합계 → 업장 띠그래프 → 결산표 ── */}
+          <section
+            aria-labelledby="ledger-title"
+            className="mt-5 bg-sheet border-t-2 border-ink px-4 pt-4 pb-5"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="ledger-title" className="text-sm font-medium text-muted">
+                {selMonth}월 {isCurrentMonth ? '누적 순매출' : '순매출'}
+              </h2>
+              <p className="text-sm text-muted">
+                최고 <span className="font-medium text-ink">{topVenue}</span>
+              </p>
             </div>
+            <p className="num mt-1 text-3xl leading-tight font-medium tracking-[-0.03em] text-ink">
+              {formatCurrency(monthDonut.total)}
+            </p>
 
+            <dl className="mt-3 grid grid-cols-3 gap-x-3 gap-y-3 border-t border-rule pt-3">
+              <Stat label="입력 완료">
+                <span className="num">{inputDays}</span>일
+              </Stat>
+              {missingDays > 0 && (
+                <Stat label="미입력">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/monthly')}
+                    className="text-accent underline decoration-1 underline-offset-2 hover:decoration-2"
+                  >
+                    <span className="num">{missingDays}</span>일
+                  </button>
+                </Stat>
+              )}
+              {yoy !== null && (
+                <Stat label="전년 동월 대비">
+                  <span className={`num ${yoy < 0 ? 'text-accent' : ''}`}>{formatDelta(yoy)}</span>
+                </Stat>
+              )}
+              {/* 객단가 = 순매출 ÷ 내장객 수 */}
+              <Stat label="객단가">
+                {monthPerGuest !== null ? (
+                  <><span className="num">{monthPerGuest.toLocaleString()}</span>원</>
+                ) : '-'}
+              </Stat>
+              {monthGuestTotal > 0 && (
+                <Stat label="내장객">
+                  <span className="num">{monthGuestTotal.toLocaleString()}</span>명
+                </Stat>
+              )}
+            </dl>
+
+            {/* 업장 구성 띠그래프 — 수치는 아래 표가 말하므로 보조기기에는 숨긴다 */}
             {monthDonut.total > 0 ? (
-              <div className="flex items-center gap-6">
-                {/* 도넛 */}
-                <div className="relative w-36 h-36 shrink-0">
-                  <Doughnut data={monthDonut.chartData} options={DONUT_OPTIONS} />
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <p className="text-[10px] text-gray-400">합계</p>
-                    <p className="text-xs font-bold text-gray-800 leading-tight">
-                      {(monthDonut.total / 10000).toFixed(0)}만원
-                    </p>
-                  </div>
-                </div>
-
-                {/* 범례 */}
-                <div className="flex-1 space-y-2">
-                  {VENUES.map((venue) => {
-                    const net = monthMap[venue] ?? 0
-                    const pct = monthDonut.total > 0 ? Math.round((net / monthDonut.total) * 100) : 0
-                    return (
-                      <div key={venue} className="flex items-center gap-2">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: VENUE_COLORS[venue] }}
-                        />
-                        <span className="text-xs text-gray-600 flex-1 truncate">{venue}</span>
-                        <span className="text-xs font-medium text-gray-800">{pct}%</span>
-                      </div>
-                    )
-                  })}
-                </div>
+              <div className="mt-5 flex h-3 gap-px" aria-hidden="true">
+                {VENUES.map((venue) => {
+                  const net = monthMap[venue] ?? 0
+                  if (net <= 0) return null
+                  return (
+                    <div
+                      key={venue}
+                      className={`basis-0 min-w-0.5 ${VENUE_SWATCH[venue]}`}
+                      style={{ flexGrow: net }}
+                    />
+                  )
+                })}
               </div>
             ) : (
-              <p className="text-center text-sm text-gray-300 py-6">
+              <p className="mt-5 text-sm text-muted">
                 {isCurrentMonth ? '이번 달' : `${selMonth}월`} 데이터 없음
               </p>
             )}
-          </div>
 
-          {/* 기준일 서브 도넛 — 이번 달은 '오늘', 지난 달은 '그 달 최고 매출일' */}
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                {isCurrentMonth ? (
-                  <p className="text-xs text-gray-400">{formatDate(today)}</p>
-                ) : spotDate !== null ? (
-                  <p className="text-xs text-gray-400">
-                    <span className="font-semibold text-amber-500">최고 매출일</span>
-                    {' · '}{formatDate(spotDate)}
-                  </p>
-                ) : (
-                  <p className="text-xs text-gray-400">{selMonth}월 최고 매출일</p>
-                )}
-                <p className="text-base font-bold text-gray-900">{formatCurrency(spotDonut.total)}</p>
-                {spotPerGuest !== null && (
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    객단가{' '}
-                    <span className="font-semibold text-gray-600">
-                      {spotPerGuest.toLocaleString()}원
-                    </span>
-                    <span className="text-gray-300"> · 내장객 {spotGuest.toLocaleString()}명</span>
-                  </p>
-                )}
-              </div>
-              {isCurrentMonth ? (
-                <button
-                  onClick={() => navigate('/input')}
-                  className="text-xs text-blue-600 font-medium px-3 py-1.5 rounded-lg border border-blue-200 active:bg-blue-50"
-                >
-                  {spotDonut.total > 0 ? '수정' : '입력'}
-                </button>
-              ) : spotDate !== null ? (
-                <button
-                  onClick={() => navigate(`/detail/${spotDate}`)}
-                  className="text-xs text-blue-600 font-medium px-3 py-1.5 rounded-lg border border-blue-200 active:bg-blue-50"
-                >
-                  상세
-                </button>
-              ) : null}
-            </div>
-
-            {spotDonut.total > 0 ? (
-              <div className="flex items-center gap-6">
-                <div className="relative w-28 h-28 shrink-0">
-                  <Doughnut data={spotDonut.chartData} options={DONUT_OPTIONS} />
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <p className="text-[10px] text-gray-400">{isCurrentMonth ? '오늘' : '최고'}</p>
-                    <p className="text-xs font-bold text-gray-800 leading-tight">
-                      {(spotDonut.total / 10000).toFixed(0)}만원
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex-1 space-y-2">
-                  {VENUES.map((venue) => {
-                    const net = spotMap[venue] ?? 0
-                    return (
-                      <div key={venue} className="flex items-center gap-2">
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: VENUE_COLORS[venue] }}
-                        />
-                        <span className="text-xs text-gray-500 flex-1 truncate">{venue}</span>
-                        <span className="text-xs font-medium text-gray-800">
-                          {net > 0 ? net.toLocaleString() + '원' : '-'}
+            {/* 업장별 결산표 — 합계 행 아래 이중 밑줄 */}
+            <table className="mt-4 w-full text-sm">
+              <caption className="sr-only">{selMonth}월 업장별 순매출</caption>
+              <thead>
+                <tr className="border-b-2 border-rule-2">
+                  <th scope="col" className="py-1.5 text-left text-xs font-normal text-muted">업장</th>
+                  <th scope="col" className="py-1.5 text-right text-xs font-normal text-muted">순매출(원)</th>
+                  <th scope="col" className="py-1.5 pl-2 text-right text-xs font-normal text-muted">비중</th>
+                  <th scope="col" className="py-1.5 pl-2 text-right text-xs font-normal text-muted whitespace-nowrap">전월 대비</th>
+                </tr>
+              </thead>
+              <tbody>
+                {VENUES.map((venue) => {
+                  const net = monthMap[venue] ?? 0
+                  const pct = monthDonut.total > 0 ? Math.round((net / monthDonut.total) * 100) : 0
+                  const prevNet = prevMonthMap[venue] ?? 0
+                  const delta = calcChangeRate(net, prevNet)
+                  return (
+                    <tr key={venue} className="border-t border-rule">
+                      <th scope="row" className="py-2 pr-2 text-left font-normal text-ink-2">
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className={`w-2.5 h-2.5 shrink-0 ${VENUE_SWATCH[venue]}`} aria-hidden="true" />
+                          <span className="truncate">{venue}</span>
                         </span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center py-4 gap-2">
-                <p className="text-sm text-gray-300">
-                  {isCurrentMonth ? '오늘 데이터 미입력' : `${selMonth}월 데이터 없음`}
-                </p>
-              </div>
-            )}
-          </div>
+                      </th>
+                      <td className="num py-2 text-right text-ink">{net > 0 ? net.toLocaleString() : '-'}</td>
+                      <td className="num py-2 pl-2 text-right text-muted">{pct}%</td>
+                      <td className={`num py-2 pl-2 text-right ${delta !== null && delta < 0 ? 'text-accent' : 'text-ink-2'}`}>
+                        {delta !== null ? formatDelta(delta) : '-'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-ink rule-double">
+                  <th scope="row" className="py-2 text-left font-semibold text-ink">합계</th>
+                  <td className="num py-2 text-right font-medium text-ink">
+                    {monthDonut.total > 0 ? monthDonut.total.toLocaleString() : '-'}
+                  </td>
+                  <td className="num py-2 pl-2 text-right text-muted">{monthDonut.total > 0 ? '100%' : '-'}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+            <p className="mt-3 text-xs text-muted">
+              {isCurrentMonth ? (
+                <>※ 전월 대비는 전월 <strong className="font-semibold text-ink-2">전체</strong> 실적과 이번 달 누적 실적을 비교한 값입니다. △는 감소입니다.</>
+              ) : (
+                <>※ 전월 대비는 {prevMonthLabel} 실적과 {selMonth}월 실적을 비교한 값입니다 (양쪽 모두 월 전체). △는 감소입니다.</>
+              )}
+            </p>
+          </section>
 
-          {/* 목표 달성률 */}
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold text-gray-400">{selMonth}월 목표 달성률</p>
+          {/* ── 목표 달성률 ── */}
+          <section aria-labelledby="target-title" className="mt-8">
+            <SectionHead id="target-title" title={`${selMonth}월 목표 달성률`}>
               {editingTarget ? (
                 <div className="flex items-center gap-1.5">
                   <input
                     type="text"
                     inputMode="numeric"
+                    name="salesTarget"
+                    aria-label="목표 매출(만원)"
                     value={targetInput}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/,/g, '')
@@ -795,252 +742,236 @@ export default function DashboardPage() {
                     }}
                     placeholder="목표 만원"
                     autoFocus
-                    className="w-28 text-right px-2 py-1 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    className="num w-28 h-9 px-2 text-right text-base bg-sheet text-ink border border-muted rounded-[2px] placeholder:text-muted focus-visible:outline-offset-[-2px]"
                   />
-                  <span className="text-xs text-gray-400">만원</span>
+                  <span className="text-xs text-muted">만원</span>
                   <button
+                    type="button"
                     onClick={() => { void handleTargetSave() }}
                     disabled={targetSaving}
-                    className="text-xs text-white bg-blue-600 px-2.5 py-1 rounded-lg font-medium disabled:opacity-50"
+                    className={BTN_FILLED}
                   >
                     {targetSaving ? '저장 중' : '확인'}
                   </button>
                 </div>
               ) : (
                 <button
+                  type="button"
                   onClick={() => {
                     setTargetInput(target > 0 ? (target / 10000).toLocaleString('ko-KR') : '')
                     setEditingTarget(true)
                   }}
-                  className="text-xs text-blue-600 font-medium px-2.5 py-1 rounded-lg border border-blue-200 active:bg-blue-50"
+                  className={BTN_OUTLINE}
                 >
-                  {target > 0 ? `목표 ${(target / 10000).toLocaleString()}만원` : '목표 설정'}
+                  {target > 0 ? <>목표 <span className="num">{(target / 10000).toLocaleString()}</span>만원</> : '목표 설정'}
                 </button>
               )}
-            </div>
+            </SectionHead>
 
             {target > 0 ? (
-              <>
-                {/* 프로그레스 바 */}
-                <div className="w-full bg-gray-100 rounded-full h-3 mb-3 overflow-hidden">
+              <div className="mt-4">
+                {/* 진행 막대 — 너비 대신 scaleX */}
+                <div
+                  role="progressbar"
+                  aria-label="목표 달성률"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={achieveRate}
+                  className="h-2 bg-paper-3 overflow-hidden"
+                >
                   <div
-                    className={`h-3 rounded-full transition-all duration-700 ${
-                      achieveRate >= 100 ? 'bg-emerald-500' : achieveRate >= 70 ? 'bg-blue-500' : 'bg-amber-400'
-                    }`}
-                    style={{ width: `${achieveRate}%` }}
+                    className={`progress-fill h-full ${progressTone}`}
+                    style={{ transform: `scaleX(${achieveRate / 100})` }}
                   />
                 </div>
-                <div className="flex justify-between items-end">
+                <div className="mt-3 flex justify-between items-end gap-3">
                   <div>
-                    <p className="text-2xl font-bold text-gray-900">{achieveRate}%</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="num text-2xl font-medium text-ink">{achieveRate}%</p>
+                    <p className="mt-0.5 text-xs text-muted">
                       {monthDonut.total > 0
-                        ? `${Math.round(monthDonut.total / 10000).toLocaleString()}만 / ${(target / 10000).toLocaleString()}만원`
+                        ? <><span className="num">{Math.round(monthDonut.total / 10000).toLocaleString()}</span>만 / <span className="num">{(target / 10000).toLocaleString()}</span>만원</>
                         : '아직 입력 없음'}
                     </p>
                   </div>
                   {isCurrentMonth && achieveRate < 100 && dailyNeed > 0 && (
                     <div className="text-right">
-                      <p className="text-sm font-bold text-gray-700">{dailyNeed.toLocaleString()}만원</p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-sm font-semibold text-ink">
+                        <span className="num">{dailyNeed.toLocaleString()}</span>만원
+                      </p>
+                      <p className="text-xs text-muted">
                         {todayDonut.total > 0 ? `내일부터 ${remainDays}일` : `오늘부터 ${remainDays}일`} 일평균 필요
                       </p>
                     </div>
                   )}
                   {!isCurrentMonth && achieveRate < 100 && remainAmount > 0 && (
                     <div className="text-right">
-                      <p className="text-sm font-bold text-red-500">
-                        -{Math.round(remainAmount / 10000).toLocaleString()}만원
+                      <p className="text-sm font-semibold text-accent">
+                        <span className="num">△{Math.round(remainAmount / 10000).toLocaleString()}</span>만원
                       </p>
-                      <p className="text-xs text-gray-400">목표 미달</p>
+                      <p className="text-xs text-muted">목표 미달</p>
                     </div>
                   )}
                   {achieveRate >= 100 && (
-                    <p className="text-sm font-bold text-emerald-500">목표 달성!</p>
+                    <p className="text-sm font-semibold text-ink">목표 달성!</p>
                   )}
                 </div>
-                <p className="text-[10px] text-gray-300 mt-2">가마감 화면의 목표 매출과 동일한 값입니다</p>
-              </>
-            ) : (
-              <p className="text-sm text-gray-300 text-center py-2">목표를 설정하면 달성률을 확인할 수 있습니다</p>
-            )}
-          </div>
-
-          {/* 매출 추이 — 이번 달은 최근 7일, 지난 달은 그 달 일자별 */}
-          {trendData.some((d) => d.total > 0) && (
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <p className="text-xs font-bold text-gray-400 mb-3">
-                {isCurrentMonth ? '최근 7일 매출 추이' : `${selMonth}월 일자별 매출 추이`}
-              </p>
-              <Bar
-                data={{
-                  labels: trendData.map((d) => {
-                    const [, mm, dd] = d.date.split('-')
-                    return `${parseInt(mm)}/${parseInt(dd)}`
-                  }),
-                  datasets: [
-                    {
-                      data: trendData.map((d) => Math.round(d.total / 10000)), // 만원 단위
-                      backgroundColor: trendData.map((d) =>
-                        d.date === spotDate ? '#3B82F6' : '#BFDBFE'
-                      ),
-                      borderRadius: 6,
-                      borderSkipped: false,
-                    },
-                  ],
-                }}
-                options={{
-                  responsive: true,
-                  plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                      callbacks: {
-                        label: (ctx) => `${Number(ctx.raw).toLocaleString()}만원`,
-                      },
-                    },
-                  },
-                  scales: {
-                    x: {
-                      grid: { display: false },
-                      ticks: { font: { size: 11 } },
-                    },
-                    y: {
-                      grid: { color: '#F3F4F6' },
-                      ticks: {
-                        font: { size: 11 },
-                        callback: (v) => `${v}만`,
-                      },
-                    },
-                  },
-                }}
-              />
-            </div>
-          )}
-
-          {/* 요일별 평균 매출 (최근 4주) */}
-          {hasWeekdayData && (
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-bold text-gray-400">
-                  요일별 평균 매출 ({isCurrentMonth ? '최근 4주' : `${selMonth}월`})
-                </p>
-                <span className="text-[10px] text-amber-500 font-semibold">■ 주말</span>
+                <p className="mt-2 text-xs text-muted">가마감 화면의 목표 매출과 동일한 값입니다</p>
               </div>
-              <Bar
-                data={{
-                  labels: WEEKDAY_LABELS,
-                  datasets: [
-                    {
-                      data: weekdayAvg.map((v) => Math.round(v / 10000)), // 만원 단위
-                      backgroundColor: WEEKDAY_LABELS.map((_, dow) =>
-                        dow === 0 || dow === 6 ? WEEKEND_BAR_COLOR : WEEKDAY_BAR_COLOR
-                      ),
-                      borderRadius: 6,
-                      borderSkipped: false,
-                    },
-                  ],
-                }}
-                options={{
-                  responsive: true,
-                  plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                      callbacks: {
-                        label: (ctx) => `${Number(ctx.raw).toLocaleString()}만원`,
-                      },
-                    },
-                  },
-                  scales: {
-                    x: {
-                      grid: { display: false },
-                      ticks: { font: { size: 11 } },
-                    },
-                    y: {
-                      grid: { color: '#F3F4F6' },
-                      ticks: {
-                        font: { size: 11 },
-                        callback: (v) => `${v}만`,
-                      },
-                    },
-                  },
-                }}
-              />
-              <p className="text-[10px] text-gray-300 mt-2">매출이 입력된 날만 평균에 포함됩니다</p>
-            </div>
-          )}
+            ) : (
+              <p className="mt-3 text-sm text-muted">목표를 설정하면 달성률을 확인할 수 있습니다</p>
+            )}
+          </section>
 
-          {/* 최근 특이사항 (비고) */}
-          {memoItems.length > 0 && (
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <p className="text-xs font-bold text-gray-400 mb-3">
-                {isCurrentMonth ? '최근 특이사항' : `${selMonth}월 특이사항`}
+          {/* ── 기준일 — 이번 달은 '오늘', 지난 달은 '그 달 최고 매출일' ── */}
+          <section aria-labelledby="spot-title" className="mt-8">
+            <SectionHead id="spot-title" title={isCurrentMonth ? '오늘' : `${selMonth}월 최고 매출일`}>
+              {isCurrentMonth ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/input')}
+                  className={spotDonut.total > 0 ? BTN_OUTLINE : BTN_FILLED}
+                >
+                  {spotDonut.total > 0 ? '수정' : '입력'}
+                </button>
+              ) : spotDate !== null ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/detail/${spotDate}`)}
+                  className={BTN_OUTLINE}
+                >
+                  상세
+                </button>
+              ) : null}
+            </SectionHead>
+
+            <div className="mt-3 flex items-baseline justify-between gap-3">
+              <p className="text-sm text-muted">
+                {isCurrentMonth ? formatDate(today) : spotDate !== null ? formatDate(spotDate) : '-'}
               </p>
-              <div className="space-y-2">
-                {memoItems.map((item) => {
-                  const [, mm, dd] = item.date.split('-')
+              <p className="num text-xl font-medium text-ink">{formatCurrency(spotDonut.total)}</p>
+            </div>
+            {spotPerGuest !== null && (
+              <p className="mt-1 text-right text-xs text-muted">
+                객단가 <span className="num text-ink-2">{spotPerGuest.toLocaleString()}</span>원,
+                내장객 <span className="num text-ink-2">{spotGuest.toLocaleString()}</span>명
+              </p>
+            )}
+
+            {spotDonut.total > 0 ? (
+              <dl className="mt-3 border-t border-rule">
+                {VENUES.map((venue) => {
+                  const net = spotMap[venue] ?? 0
                   return (
-                    <div key={item.date} className="flex gap-2 items-start">
-                      <span className="text-xs font-semibold text-gray-500 shrink-0 w-9">
-                        {parseInt(mm)}/{parseInt(dd)}
-                      </span>
-                      <span className="text-xs text-gray-700 flex-1 break-words">
-                        {item.entries.map((e) => `${e.venue}: ${e.memo}`).join(', ')}
-                      </span>
+                    <div key={venue} className="flex items-center justify-between gap-3 py-1.5 border-b border-rule">
+                      <dt className="flex items-center gap-2 text-sm text-ink-2 min-w-0">
+                        <span className={`w-2 h-2 shrink-0 ${VENUE_SWATCH[venue]}`} aria-hidden="true" />
+                        <span className="truncate">{venue}</span>
+                      </dt>
+                      <dd className="text-sm text-ink">
+                        {net > 0 ? <><span className="num">{net.toLocaleString()}</span>원</> : '-'}
+                      </dd>
                     </div>
                   )
                 })}
+              </dl>
+            ) : (
+              <p className="mt-3 text-sm text-muted">
+                {isCurrentMonth ? '오늘 데이터 미입력' : `${selMonth}월 데이터 없음`}
+              </p>
+            )}
+          </section>
+
+          {/* ── 매출 추이 — 이번 달은 최근 7일, 지난 달은 그 달 일자별. 기준일 막대만 빨간 펜 ── */}
+          {trendData.some((d) => d.total > 0) && (
+            <section aria-labelledby="trend-title" className="mt-8">
+              <SectionHead
+                id="trend-title"
+                title={isCurrentMonth ? '최근 7일 매출 추이' : `${selMonth}월 일자별 매출 추이`}
+              >
+                <span className="text-xs text-muted">단위 만원</span>
+              </SectionHead>
+              <div className="mt-3">
+                <Bar
+                  data={{
+                    labels: trendData.map((d) => {
+                      const [, mm, dd] = d.date.split('-')
+                      return `${parseInt(mm)}/${parseInt(dd)}`
+                    }),
+                    datasets: [
+                      {
+                        data: trendData.map((d) => Math.round(d.total / 10000)), // 만원 단위
+                        backgroundColor: trendData.map((d) =>
+                          d.date === spotDate ? chartTokens.mark : chartTokens.bar
+                        ),
+                        borderRadius: 0,
+                        maxBarThickness: 24,
+                      },
+                    ],
+                  }}
+                  options={barOptions(chartTokens)}
+                />
               </div>
-            </div>
+            </section>
           )}
 
-          {/* 업장별 이번달 카드 */}
-          <div className="grid grid-cols-2 gap-3">
-            {VENUES.map((venue) => {
-              const net = monthMap[venue] ?? 0
-              const pct = monthDonut.total > 0 ? Math.round((net / monthDonut.total) * 100) : 0
-              const prevNet = prevMonthMap[venue] ?? 0
-              const delta = calcChangeRate(net, prevNet)
-              return (
-                <div
-                  key={venue}
-                  className="rounded-2xl p-4 border"
-                  style={{
-                    backgroundColor: VENUE_COLORS_LIGHT[venue],
-                    borderColor: VENUE_COLORS[venue] + '33',
+          {/* ── 요일별 평균 매출 — 주말만 짙게 ── */}
+          {hasWeekdayData && (
+            <section aria-labelledby="weekday-title" className="mt-8">
+              <SectionHead
+                id="weekday-title"
+                title={`요일별 평균 매출 (${isCurrentMonth ? '최근 4주' : `${selMonth}월`})`}
+              >
+                <span className="flex items-center gap-1.5 text-xs text-muted">
+                  <span className="w-2.5 h-2.5 bg-series-2" aria-hidden="true" />
+                  주말
+                </span>
+              </SectionHead>
+              <div className="mt-3">
+                <Bar
+                  data={{
+                    labels: WEEKDAY_LABELS,
+                    datasets: [
+                      {
+                        data: weekdayAvg.map((v) => Math.round(v / 10000)), // 만원 단위
+                        backgroundColor: WEEKDAY_LABELS.map((_, dow) =>
+                          dow === 0 || dow === 6 ? chartTokens.strong : chartTokens.bar
+                        ),
+                        borderRadius: 0,
+                        maxBarThickness: 24,
+                      },
+                    ],
                   }}
-                >
-                  <div
-                    className="text-xs font-semibold mb-2"
-                    style={{ color: VENUE_COLORS[venue] }}
-                  >
-                    {venue}
-                  </div>
-                  <p className="text-sm font-bold text-gray-800">
-                    {net > 0 ? net.toLocaleString() + '원' : '-'}
-                  </p>
-                  <div className="flex items-center justify-between gap-1 mt-0.5">
-                    <p className="text-xs text-gray-400">{pct}% 비중</p>
-                    {delta !== null && (
-                      <span className={`text-[11px] font-semibold whitespace-nowrap ${
-                        delta >= 0 ? 'text-emerald-600' : 'text-red-500'
-                      }`}>
-                        전월 {delta >= 0 ? '↑' : '↓'}{Math.abs(delta)}%
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <p className="text-[10px] text-gray-400 text-center">
-            {isCurrentMonth ? (
-              <>※ 전월 대비는 전월 <span className="font-semibold">전체</span> 실적과 이번 달 누적 실적을 비교한 값입니다</>
-            ) : (
-              <>※ 전월 대비는 {prevMonthLabel} 실적과 {selMonth}월 실적을 비교한 값입니다 (양쪽 모두 월 전체)</>
-            )}
-          </p>
+                  options={barOptions(chartTokens)}
+                />
+              </div>
+              <p className="mt-2 text-xs text-muted">매출이 입력된 날만 평균에 포함됩니다</p>
+            </section>
+          )}
 
-        </div>
+          {/* ── 특이사항 (비고) ── */}
+          {memoItems.length > 0 && (
+            <section aria-labelledby="memo-title" className="mt-8">
+              <SectionHead
+                id="memo-title"
+                title={isCurrentMonth ? '최근 특이사항' : `${selMonth}월 특이사항`}
+              />
+              <ul>
+                {memoItems.map((item) => {
+                  const [, mm, dd] = item.date.split('-')
+                  return (
+                    <li key={item.date} className="grid grid-cols-[3rem_1fr] gap-3 py-2 border-b border-rule text-sm">
+                      <span className="num text-muted">{parseInt(mm)}/{parseInt(dd)}</span>
+                      <span className="text-ink-2 break-words min-w-0">
+                        {item.entries.map((e) => `${e.venue}: ${e.memo}`).join(', ')}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </section>
+          )}
+
+        </main>
       )}
 
       <BottomNav />

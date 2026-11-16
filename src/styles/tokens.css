@@ -1,0 +1,93 @@
+/* 노스팜CC 매출 — 디자인 토큰 (Hallmark · Almanac 체계 + 장부 팔레트)
+ * 크림색 장부 종이, 청흑색 잉크, 빨간 펜 한 색. 모든 색·글꼴은 여기서만 정의한다.
+ * Tailwind 기본 크기(text-sm 등)는 다른 화면에 영향이 없도록 덮어쓰지 않는다. */
+@theme static {
+  --text-md: 1rem;
+  --text-display-s: 1.44rem;
+  --text-display: 1.728rem;
+  --text-section: 1.2rem;
+  --text-title: 1rem;
+  --text-lead: 1rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* 종이 — 크림색 장부 */
+  --color-paper: oklch(95.5% 0.018 88);
+  --color-paper-2: oklch(92.5% 0.022 86);
+  --color-paper-3: oklch(88.5% 0.024 84);
+  --color-sheet: oklch(98.6% 0.008 90);
+
+  /* 잉크 — 청흑색 */
+  --color-ink: oklch(22% 0.035 258);
+  --color-ink-2: oklch(30% 0.030 258);
+  --color-muted: oklch(46% 0.022 258);
+
+  /* 괘선 — 가는 선(행 구분)과 굵은 선(머리 아래) */
+  --color-rule: oklch(84% 0.020 80);
+  --color-rule-2: oklch(30% 0.030 258);
+
+  /* 빨간 펜 — 선택·주의·감소에만 */
+  --color-accent: oklch(50% 0.165 27);
+  --color-accent-2: oklch(42% 0.150 27);
+  --color-accent-ink: oklch(98.5% 0.010 90);
+  --color-focus: oklch(50% 0.170 27);
+  --color-error: oklch(50% 0.165 27);
+  --color-success: oklch(42% 0.090 155);
+
+  /* 업장 계열색 — 잉크 명도 단계 (데이터 색은 글자에 쓰지 않는다) */
+  --color-series-1: oklch(26% 0.040 258);
+  --color-series-2: oklch(42% 0.036 258);
+  --color-series-3: oklch(57% 0.030 258);
+  --color-series-4: oklch(71% 0.024 258);
+  --color-series-5: oklch(83% 0.018 258);
+
+  /* 카카오톡 공유 버튼 — 카카오 브랜드색이라 장부 팔레트와 별개로 그대로 둔다 */
+  --color-kakao: #FEE500;
+  --color-kakao-ink: #1A1A1A;
+
+  --font-display: "IBM Plex Sans KR", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "IBM Plex Sans KR", ui-sans-serif, system-ui, sans-serif;
+  /* 숫자 전용 — 원·일 같은 한글은 Plex Sans KR로 떨어진다 */
+  --font-outlier: "IBM Plex Mono", "IBM Plex Sans KR", ui-monospace, monospace;
+
+  --radius-card: 0;
+  --radius-pill: 2px;
+  --shadow-card: none;
+  --tracking-display: -0.02em;
+}
+:root {
+  color-scheme: light;
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
+  --space-3xl: 96px;
+  --space-4xl: 144px;
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+  --container: 1440px;
+  --gutter: 64px;
+  --gap-columns: 32px;
+  --section-gap-s: 120px;
+  --section-gap: 144px;
+  --section-gap-l: 176px;
+  --z-base: 1;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-sticky-nav: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+  --rule-hair: 1px;
+  --rule-bar: 2px;
+  --display-weight: 600;
+}
+@media (max-width: 60rem) { :root { --gutter: 24px; --section-gap-s: 80px; --section-gap: 96px; --section-gap-l: 120px; } }
+@media (max-width: 40rem) { :root { --gutter: 16px; --section-gap-s: 56px; --section-gap: 72px; --section-gap-l: 96px; --gap-columns: 16px; } }

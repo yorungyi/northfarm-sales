@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { DailySales } from '../types/sales'
 import { Venue, VENUES } from '../types/sales'
@@ -7,18 +7,16 @@ import { formatCurrency, calcChangeRate } from '../utils/format'
 import { downloadCsv } from '../utils/exportCsv'
 import BottomNav from '../components/BottomNav'
 import MonthYearPicker from '../components/MonthYearPicker'
+import { Stat } from '../components/Ledger'
+import { VENUE_SWATCH, BTN_OUTLINE, formatDelta } from '../lib/ledger'
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
 }
 
-// 업장별 색상 (도넛 차트와 동일)
-const VENUE_COLORS: Record<Venue, string> = {
-  [Venue.CLUBHOUSE]:  '#3B82F6',
-  [Venue.STARTHOUSE]: '#10B981',
-  [Venue.EAST_SHADE]: '#F59E0B',
-  [Venue.WEST_SHADE]: '#8B5CF6',
-  [Venue.CLIENT]:     '#EC4899',
+/** 증감률 글자색 — 감소만 빨간 펜, 나머지는 본문 잉크 */
+function deltaTone(rate: number): string {
+  return rate < 0 ? 'text-accent' : 'text-ink-2'
 }
 
 /**
@@ -133,8 +131,9 @@ export default function MonthlyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
+    <div className="min-h-screen bg-paper text-ink pb-24">
+      {/* 헤더 — 장부 머리(종이 바탕 + 굵은 괘선) 안에 연도·월 선택기 */}
+      <header className="bg-paper border-b-2 border-rule-2 px-4 pt-safe-top">
         <MonthYearPicker
           title="월별 현황"
           year={selYear}
@@ -143,203 +142,227 @@ export default function MonthlyPage() {
         />
       </header>
 
-      {/* 월 합계 카드 */}
-      <div className="px-4 pt-4 max-w-lg mx-auto">
-        <div className="bg-blue-600 rounded-2xl p-4 text-white text-center shadow">
-          <p className="text-sm text-blue-200">
-            {selYear !== currentYear ? `${selYear}년 ` : ''}{selMonth}월 순매출 합계
-          </p>
-          {/* 불러오는 중에는 금액 대신 '—' — 이전 달 숫자를 이 달 숫자로 오해하지 않게 한다 */}
-          <p className="text-2xl font-bold mt-1">
-            {loading ? '—' : formatCurrency(monthTotal)}
-          </p>
-          <div className="flex justify-center gap-4 mt-1.5">
-            {changeRate !== null && (
-              <p className={`text-sm whitespace-nowrap ${changeRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                전월 {changeRate >= 0 ? '↑' : '↓'}{Math.abs(changeRate)}%
-              </p>
-            )}
-            {yoyRate !== null && (
-              <p className={`text-sm whitespace-nowrap ${yoyRate >= 0 ? 'text-green-300' : 'text-red-300'}`}>
-                전년동월 {yoyRate >= 0 ? '↑' : '↓'}{Math.abs(yoyRate)}%
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* 조회 실패 안내 — 빈 화면을 '전부 미입력'으로 오해하지 않게 한다 */}
       {loadFailed && (
-        <div className="px-4 pt-3 max-w-lg mx-auto">
-          <div className="bg-red-50 rounded-2xl p-3 border border-red-200">
-            <p className="text-sm font-bold text-red-600">데이터를 불러오지 못했습니다</p>
-            <p className="mt-0.5 text-xs text-red-500">
+        <div className="px-4 mt-4 max-w-lg mx-auto">
+          <div role="alert" className="bg-paper-2 border-t-2 border-accent px-4 py-3">
+            <p className="text-sm font-semibold text-accent">데이터를 불러오지 못했습니다</p>
+            <p className="mt-1 text-xs text-ink-2">
               네트워크 상태를 확인하고 새로고침해주세요.
             </p>
           </div>
         </div>
       )}
 
-      {/* 엑셀 내보내기 */}
-      <div className="px-4 pt-3 max-w-lg mx-auto flex justify-end">
-        <button
-          onClick={handleExportCsv}
-          disabled={loading}
-          className="min-h-[44px] px-4 text-sm text-blue-600 font-medium rounded-xl border border-blue-200 bg-white active:bg-blue-50 transition-colors disabled:opacity-50"
+      <main className="px-4 max-w-lg mx-auto">
+        {/* ── 월 장부: 합계 → 증감 → 일자별 표 ── */}
+        <section
+          aria-labelledby="monthly-total-title"
+          className="mt-5 bg-sheet border-t-2 border-ink px-4 pt-4 pb-5"
         >
-          엑셀 내보내기
-        </button>
-      </div>
-
-      {/* 일별 목록 */}
-      <div className="px-4 pt-3 max-w-lg mx-auto">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div
-            style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '0 8px' }}
-            className="text-xs text-gray-400 font-medium px-4 py-2 border-b border-gray-100 items-center"
-          >
-            <span>날짜</span>
-            <span className="text-right">순매출</span>
-            <span className="text-right">전년</span>
-            <span></span>
+          <div className="flex items-start justify-between gap-3">
+            <h2 id="monthly-total-title" className="pt-1 text-sm font-medium text-muted">
+              {selYear !== currentYear ? `${selYear}년 ` : ''}{selMonth}월 순매출 합계
+            </h2>
+            {/* 엑셀 내보내기 */}
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={loading}
+              className={BTN_OUTLINE}
+            >
+              엑셀 내보내기
+            </button>
           </div>
+          {/* 불러오는 중에는 금액 대신 '—' — 이전 달 숫자를 이 달 숫자로 오해하지 않게 한다 */}
+          <p className="num mt-1 text-3xl leading-tight font-medium tracking-[-0.03em] text-ink">
+            {loading ? '—' : formatCurrency(monthTotal)}
+          </p>
+
+          {(changeRate !== null || yoyRate !== null) && (
+            <dl className="mt-3 grid grid-cols-2 gap-x-3 border-t border-rule pt-3">
+              {changeRate !== null && (
+                <Stat label="전월">
+                  <span className={`num ${deltaTone(changeRate)}`}>{formatDelta(changeRate)}</span>
+                </Stat>
+              )}
+              {yoyRate !== null && (
+                <Stat label="전년동월">
+                  <span className={`num ${deltaTone(yoyRate)}`}>{formatDelta(yoyRate)}</span>
+                </Stat>
+              )}
+            </dl>
+          )}
 
           {loading ? (
-            <div className="py-8 text-center text-sm text-gray-400">로딩 중...</div>
+            // 로딩 — 일자별 표 자리 모양의 빈 막대 (애니메이션 없음)
+            <div className="mt-5" aria-busy="true">
+              <div className="h-3 w-full bg-paper-2" />
+              <div className="mt-3 h-3 w-full bg-paper-2" />
+              <div className="mt-3 h-3 w-full bg-paper-2" />
+              <div className="mt-3 h-3 w-2/3 bg-paper-2" />
+              <p className="mt-4 text-sm text-muted">로딩 중…</p>
+            </div>
           ) : (
-            <>
-              {daySummaries.map((day) => {
-                const isPast = day.date < todayStr
-                const isToday = day.date === todayStr
-                const missing = isPast && !day.hasData
-                const isExpanded = activeExpandedDate === day.date
-                const vMap = venueMap.get(day.date) ?? {}
+            // 일자별 장부 — 날짜를 누르면 업장 내역이 펼쳐지고, 빈 날은 입력 화면으로 간다
+            <table className="mt-5 w-full text-sm">
+              <caption className="sr-only">{selMonth}월 일자별 순매출</caption>
+              <thead>
+                <tr className="border-b-2 border-rule-2">
+                  <th scope="col" className="py-1.5 text-left text-xs font-normal text-muted">날짜</th>
+                  <th scope="col" className="py-1.5 pl-2 text-right text-xs font-normal text-muted">순매출</th>
+                  <th scope="col" className="py-1.5 pl-2 text-right text-xs font-normal text-muted">전년</th>
+                  <th scope="col" className="py-1.5 pl-2 w-12"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {daySummaries.map((day) => {
+                  const isPast = day.date < todayStr
+                  const isToday = day.date === todayStr
+                  const missing = isPast && !day.hasData
+                  const isExpanded = activeExpandedDate === day.date
+                  const vMap = venueMap.get(day.date) ?? {}
+                  const clickable = day.hasData || isPast || isToday
 
-                return (
-                  <div key={day.date} className="border-b border-gray-50 last:border-0">
-                    {/* 날짜 행 */}
-                    <button
-                      onClick={() => {
-                        if (day.hasData) {
-                          // 데이터 있는 날 → 드릴다운 토글
-                          setExpandedDate(isExpanded ? null : day.date)
-                        } else if (isPast || isToday) {
-                          navigate(`/input?date=${day.date}`)
-                        }
-                      }}
-                      disabled={!day.hasData && !isPast && !isToday}
-                      className={`w-full grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-2 px-4 py-3 text-sm transition-colors ${
-                        day.hasData
-                          ? isExpanded
-                            ? 'bg-blue-50'
-                            : 'active:bg-blue-50 cursor-pointer'
-                          : (isPast || isToday)
-                            ? 'active:bg-red-50 cursor-pointer'
-                            : 'cursor-default'
-                      } ${isToday && !isExpanded ? 'bg-blue-50' : ''}`}
-                    >
-                      <span className="flex items-center gap-1.5 font-medium text-gray-700">
-                        {day.date.slice(5).replace('-', '/')}
-                        {missing && <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />}
-                        {day.hasData && (
-                          <span className={`w-1.5 h-1.5 rounded-full inline-block ${isExpanded ? 'bg-blue-500' : 'bg-green-400'}`} />
-                        )}
-                      </span>
-                      <span className={`text-right font-medium whitespace-nowrap ${day.hasData ? 'text-gray-800' : 'text-gray-300'}`}>
-                        {day.hasData ? day.net.toLocaleString() + '원' : '-'}
-                      </span>
-                      {(() => {
-                        if (day.lastYearNet <= 0) return <span />
-                        const lyThousands = Math.round(day.lastYearNet / 1000)
-                        const delta = day.hasData
-                          ? Math.round(((day.net - day.lastYearNet) / day.lastYearNet) * 100)
-                          : null
-                        return (
-                          <span className={`text-right text-xs whitespace-nowrap ${
-                            delta === null ? 'text-gray-400' :
-                            delta >= 0 ? 'text-green-500' : 'text-red-400'
-                          }`}>
-                            {delta !== null
-                              ? `작년 ${lyThousands.toLocaleString()}천 (${delta >= 0 ? '↑' : '↓'}${Math.abs(delta)}%)`
-                              : `작년 ${lyThousands.toLocaleString()}천`}
-                          </span>
-                        )
-                      })()}
-                      <span className="text-right">
-                        {missing && <span className="text-xs text-red-400 font-medium">입력 →</span>}
-                        {day.hasData && (
-                          <span className="text-xs text-gray-400">{isExpanded ? '▲' : '▼'}</span>
-                        )}
-                      </span>
-                    </button>
+                  // 작년 같은 날 비교 — 작년 값이 없으면 칸을 비운다
+                  const lyThousands = Math.round(day.lastYearNet / 1000)
+                  const delta = day.lastYearNet > 0 && day.hasData
+                    ? Math.round(((day.net - day.lastYearNet) / day.lastYearNet) * 100)
+                    : null
 
-                    {/* 드릴다운 패널 */}
-                    {isExpanded && (
-                      <div className="bg-gray-50 px-4 pb-3 pt-1 space-y-1.5">
-                        {VENUES.map((venue) => {
-                          const net = vMap[venue] ?? 0
-                          const pct = day.net > 0 ? Math.round((net / day.net) * 100) : 0
-                          return (
-                            <div key={venue} className="flex items-center gap-2">
-                              <span
-                                className="w-2 h-2 rounded-full shrink-0"
-                                style={{ backgroundColor: VENUE_COLORS[venue] }}
-                              />
-                              <span className="text-xs text-gray-600 flex-1">{venue}</span>
-                              <span className="text-xs text-gray-400 w-8 text-right">{net > 0 ? `${pct}%` : '-'}</span>
-                              <span className="text-xs font-medium text-gray-800 w-24 text-right">
-                                {net > 0 ? net.toLocaleString() + '원' : '-'}
+                  return (
+                    <Fragment key={day.date}>
+                      {/* 날짜 행 — 날짜 버튼이 행 전체를 덮어 어디를 눌러도 동작한다 */}
+                      <tr
+                        className={`relative border-t border-rule transition-colors ${
+                          isExpanded || isToday ? 'bg-paper-2' : ''
+                        } ${clickable ? 'hover:bg-paper-2' : ''}`}
+                      >
+                        <th scope="row" className="pr-2 text-left font-normal align-middle">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (day.hasData) {
+                                // 데이터 있는 날 → 드릴다운 토글
+                                setExpandedDate(isExpanded ? null : day.date)
+                              } else if (isPast || isToday) {
+                                navigate(`/input?date=${day.date}`)
+                              }
+                            }}
+                            disabled={!day.hasData && !isPast && !isToday}
+                            aria-expanded={day.hasData ? isExpanded : undefined}
+                            className={`num min-h-11 text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-offset-2 disabled:cursor-default ${
+                              isToday ? 'font-semibold text-ink' : clickable ? 'text-ink-2' : 'text-muted'
+                            }`}
+                          >
+                            {day.date.slice(5).replace('-', '/')}
+                          </button>
+                        </th>
+                        <td className="py-2 pl-2 text-right whitespace-nowrap align-middle">
+                          {day.hasData ? (
+                            <span className="text-ink"><span className="num">{day.net.toLocaleString()}</span>원</span>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+                        </td>
+                        <td className="py-2 pl-2 text-right text-xs whitespace-nowrap align-middle">
+                          {day.lastYearNet > 0 && (
+                            <>
+                              <span className="block text-muted">
+                                작년 <span className="num">{lyThousands.toLocaleString()}</span>천
                               </span>
-                            </div>
-                          )
-                        })}
-                        {/* 상세 / 수정 링크 */}
-                        <div className="flex gap-2 pt-1.5">
-                          <button
-                            onClick={() => navigate(`/detail/${day.date}`)}
-                            className="flex-1 text-xs text-blue-600 font-medium py-1.5 rounded-lg border border-blue-200 active:bg-blue-50"
-                          >
-                            상세 보기
-                          </button>
-                          <button
-                            onClick={() => navigate(`/input?date=${day.date}`)}
-                            className="flex-1 text-xs text-gray-600 font-medium py-1.5 rounded-lg border border-gray-200 active:bg-gray-100"
-                          >
-                            수정
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+                              {delta !== null && (
+                                <span className={`num block ${deltaTone(delta)}`}>{formatDelta(delta)}</span>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td className="py-2 pl-2 text-right text-xs whitespace-nowrap align-middle">
+                          {missing && <span className="font-medium text-accent">입력 →</span>}
+                          {day.hasData && (
+                            <span className="text-muted" aria-hidden="true">{isExpanded ? '▲' : '▼'}</span>
+                          )}
+                        </td>
+                      </tr>
 
-              {/* 합계 행 — 올해 합계 옆에 전년 동월 합계를 나란히 둔다 (일자별 행과 같은 열 배치) */}
-              <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-x-2 px-4 py-3 bg-gray-50 text-sm font-bold">
-                <span className="text-gray-700">합계</span>
-                <span className="text-right text-blue-600 whitespace-nowrap">
-                  {monthTotal.toLocaleString()}원
-                </span>
-                <span className="text-right text-xs whitespace-nowrap">
-                  {lastYearTotal > 0 ? (
-                    <span className={
-                      yoyRate === null ? 'text-gray-400'
-                        : yoyRate >= 0 ? 'text-green-500'
-                        : 'text-red-400'
-                    }>
-                      작년 {Math.round(lastYearTotal / 1000).toLocaleString()}천
-                      {yoyRate !== null && ` (${yoyRate >= 0 ? '↑' : '↓'}${Math.abs(yoyRate)}%)`}
-                    </span>
-                  ) : (
-                    <span className="text-gray-300">작년 -</span>
-                  )}
-                </span>
-                <span />
-              </div>
-            </>
+                      {/* 드릴다운 — 그날의 업장별 내역과 상세·수정 이동 */}
+                      {isExpanded && (
+                        <tr className="bg-paper-2">
+                          <td colSpan={4} className="px-3 pt-1 pb-3">
+                            <ul>
+                              {VENUES.map((venue) => {
+                                const net = vMap[venue] ?? 0
+                                const pct = day.net > 0 ? Math.round((net / day.net) * 100) : 0
+                                return (
+                                  <li
+                                    key={venue}
+                                    className="grid grid-cols-[1fr_auto_auto] items-center gap-x-3 py-1.5 border-t border-rule first:border-t-0 text-xs"
+                                  >
+                                    <span className="flex items-center gap-2 min-w-0 text-ink-2">
+                                      <span className={`w-2 h-2 shrink-0 ${VENUE_SWATCH[venue]}`} aria-hidden="true" />
+                                      <span className="truncate">{venue}</span>
+                                    </span>
+                                    <span className="num w-10 text-right text-muted">{net > 0 ? `${pct}%` : '-'}</span>
+                                    <span className="w-28 text-right text-ink whitespace-nowrap">
+                                      {net > 0 ? <><span className="num">{net.toLocaleString()}</span>원</> : '-'}
+                                    </span>
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                            {/* 상세 / 수정 링크 */}
+                            <div className="flex gap-2 pt-2">
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/detail/${day.date}`)}
+                                className={`${BTN_OUTLINE} flex-1`}
+                              >
+                                상세 보기
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/input?date=${day.date}`)}
+                                className={`${BTN_OUTLINE} flex-1`}
+                              >
+                                수정
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+              {/* 합계 행 — 올해 합계 옆에 전년 동월 합계를 나란히 둔다. 아래는 회계 이중 밑줄 */}
+              <tfoot>
+                <tr className="border-t border-ink rule-double">
+                  <th scope="row" className="py-2.5 text-left font-semibold text-ink">합계</th>
+                  <td className="py-2.5 pl-2 text-right font-medium text-ink whitespace-nowrap">
+                    <span className="num">{monthTotal.toLocaleString()}</span>원
+                  </td>
+                  <td className="py-2.5 pl-2 text-right text-xs whitespace-nowrap">
+                    {lastYearTotal > 0 ? (
+                      <>
+                        <span className="block text-muted">
+                          작년 <span className="num">{Math.round(lastYearTotal / 1000).toLocaleString()}</span>천
+                        </span>
+                        {yoyRate !== null && (
+                          <span className={`num block ${deltaTone(yoyRate)}`}>{formatDelta(yoyRate)}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-muted">작년 -</span>
+                    )}
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
           )}
-        </div>
-      </div>
+          <p className="mt-3 text-xs text-muted">※ △는 감소입니다.</p>
+        </section>
+      </main>
 
       <BottomNav />
     </div>

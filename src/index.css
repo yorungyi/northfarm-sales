@@ -1,19 +1,34 @@
+/* Hallmark · shape: app screen · genre: editorial · theme: Almanac (deal 2/3, seed golf-club-restaurant-manager-0d28·8335a4d3·2026-11-16·r0) · redesign: full
+ * nav: kept (bottom tab bar, emoji removed) · signature: the venue ledger with a double-ruled total · states: loading, partial failure, empty
+ * axes: light/grotesk-sans/chromatic-red · posture: restrained · contrast: pass · v2.0.0
+ * swap: Almanac's slate stock warmed to cream paper and its magenta turned ledger red, by the owner's pick of a ledger tone; Hanken/Newsreader swapped for IBM Plex Sans KR (Hangul) */
+/* Hallmark · waive 30a ClosingPage.tsx:120,132,133 · the ✅/⚠️ are characters inside the KakaoTalk report text copied to the clipboard (the owner's report format, read by startsWith logic), not icons on screen */
+/* Hallmark · pre-emit critique: P3 H3 E3 S3 R2 V3 · weakest: R (two Chart.js bar charts remain), restyled to one ink ramp with the argued bar in red */
 @import "tailwindcss";
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #f3f4f6;
-}
+@import "./styles/tokens.css";
+@import "./styles/base.css" layer(base);
 
 #root {
   min-height: 100svh;
   display: flex;
   flex-direction: column;
+}
+
+@layer components {
+  /* 숫자 — 고정폭, 자릿수 정렬 */
+  .num {
+    font-family: var(--font-outlier);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 합계 행 — 회계장부식 이중 밑줄 */
+  .rule-double {
+    border-bottom: 3px double var(--color-ink);
+  }
+
+  /* 목표 진행 막대 — 너비 대신 transform으로만 움직인다 */
+  .progress-fill {
+    transform-origin: left center;
+    transition: transform var(--dur-long) var(--ease-out);
+  }
 }

@@ -34,11 +34,11 @@ export default function App() {
     }
   }, [])
 
-  // 세션 확인 중 — 깜빡임 방지용 스피너
+  // 세션 확인 중 — 깜빡임 방지용 안내 글자 (애니메이션 없음)
   if (checking) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-gray-200 border-t-blue-600 animate-spin" />
+      <div className="min-h-screen bg-paper flex items-center justify-center">
+        <p role="status" className="text-sm text-muted">불러오는 중…</p>
       </div>
     )
   }

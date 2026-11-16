@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getEarliestSaleDate } from '../lib/api'
 
-/** 월 선택 칩에는 늘 12개월을 모두 깔아둔다 (1월 ~ 12월) */
+/** 월 선택 탭에는 늘 12개월을 모두 깔아둔다 (1월 ~ 12월) */
 const ALL_MONTHS: number[] = Array.from({ length: 12 }, (_, i) => i + 1)
 
 /**
@@ -9,6 +9,19 @@ const ALL_MONTHS: number[] = Array.from({ length: 12 }, (_, i) => i + 1)
  * 조회가 성공하면 실제 첫 데이터 연도로 넓어진다.
  */
 const FALLBACK_YEAR_SPAN = 1
+
+/** 연도 이동 버튼 — 각진 36px 정사각, 가는 괘선 테두리 */
+const YEAR_BTN =
+  'w-9 h-9 grid place-items-center rounded-[2px] border border-rule text-ink-2 hover:bg-paper-2 active:bg-paper-3 focus-visible:outline-offset-2 transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
+
+/** 연도 이동 화살표 — 글자 대신 선으로 그린 꺾쇠 (버튼 이름은 aria-label이 맡는다) */
+function Chevron({ dir }: { dir: 'left' | 'right' }) {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d={dir === 'left' ? 'M10 3 5 8l5 5' : 'M6 3l5 5-5 5'} />
+    </svg>
+  )
+}
 
 interface Props {
   /** 화면 제목 — 연도 이동 버튼과 같은 줄에 놓인다 */
@@ -22,7 +35,8 @@ interface Props {
 }
 
 /**
- * 연도·월 선택기 — 화면 헤더에 넣어 쓴다.
+ * 연도·월 선택기 — 화면 헤더(<header>) 안에 넣어 쓴다.
+ * 장부 체계의 PageHeader와 같은 머리 구성(작은 표제 → 제목 → 밑줄 탭)을 따른다.
  *
  * 고를 수 있는 범위는 코드에 박지 않고 DB의 첫 매출일에서 구한다.
  * 과거 데이터를 넣으면 코드를 고치지 않아도 그 해가 열린다.
@@ -49,7 +63,7 @@ export default function MonthYearPicker({ title, subtitle, year, month, onChange
     return () => { cancelled = true }
   }, [currentYear])
 
-  // 월 칩 가로 스크롤 — 첫 렌더에서만 오른쪽 끝(연말 방향)으로 보내 이번 달이 보이게 한다
+  // 월 탭 가로 스크롤 — 첫 렌더에서만 오른쪽 끝(연말 방향)으로 보내 이번 달이 보이게 한다
   const monthChipsRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = monthChipsRef.current
@@ -71,54 +85,67 @@ export default function MonthYearPicker({ title, subtitle, year, month, onChange
 
   return (
     <>
-      <div className="max-w-lg mx-auto py-4 flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">{title}</h1>
-          {subtitle !== undefined && <p className="text-xs text-gray-400">{subtitle}</p>}
-        </div>
-        {/* 연도 이동 — 데이터가 있는 첫 해부터 올해까지 */}
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => shiftYear(-1)}
-            disabled={year <= firstYear}
-            aria-label="이전 연도"
-            className="w-9 h-9 rounded-full text-gray-600 text-lg leading-none bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-30"
-          >
-            ‹
-          </button>
-          <span className="w-16 text-center text-sm font-bold text-gray-900 tabular-nums">
-            {year}년
-          </span>
-          <button
-            onClick={() => shiftYear(1)}
-            disabled={year >= currentYear}
-            aria-label="다음 연도"
-            className="w-9 h-9 rounded-full text-gray-600 text-lg leading-none bg-gray-100 active:bg-gray-200 transition-colors disabled:opacity-30"
-          >
-            ›
-          </button>
+      {/* 머리 — 작은 표제, 제목, 오른쪽 연도 이동 */}
+      <div className="max-w-lg mx-auto pt-5 pb-2">
+        <p className="text-xs text-muted">노스팜CC</p>
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold text-ink">{title}</h1>
+            {subtitle !== undefined && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
+          </div>
+          {/* 연도 이동 — 데이터가 있는 첫 해부터 올해까지 */}
+          <div role="group" aria-label="연도 선택" className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => shiftYear(-1)}
+              disabled={year <= firstYear}
+              aria-label="이전 연도"
+              className={YEAR_BTN}
+            >
+              <Chevron dir="left" />
+            </button>
+            <span className="w-16 text-center text-sm font-semibold text-ink">
+              <span className="num">{year}</span>년
+            </span>
+            <button
+              type="button"
+              onClick={() => shiftYear(1)}
+              disabled={year >= currentYear}
+              aria-label="다음 연도"
+              className={YEAR_BTN}
+            >
+              <Chevron dir="right" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 월 선택 — 1~12월 전부. 아직 오지 않은 달만 눌리지 않게 막는다 */}
-      <div ref={monthChipsRef} className="max-w-lg mx-auto flex gap-1 overflow-x-auto pb-2">
+      {/* 월 선택 — 1~12월 전부. 선택한 달은 빨간 밑줄, 아직 오지 않은 달만 눌리지 않게 막는다 */}
+      <div
+        ref={monthChipsRef}
+        role="group"
+        aria-label="월 선택"
+        className="max-w-lg mx-auto flex overflow-x-auto -mb-[2px] [scrollbar-width:none]"
+      >
         {ALL_MONTHS.map((m) => {
           const active = m === month
           const future = m > lastSelectableMonth(year)
           return (
             <button
               key={m}
+              type="button"
+              aria-pressed={active}
               onClick={() => onChange(year, m)}
               disabled={future}
-              className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              className={`shrink-0 px-3 min-h-11 text-sm border-b-2 focus-visible:outline-offset-[-2px] active:bg-paper-2 disabled:opacity-55 disabled:cursor-not-allowed transition-colors ${
                 active
-                  ? 'bg-blue-600 text-white'
+                  ? 'border-accent text-ink font-semibold'
                   : future
-                    ? 'bg-gray-50 text-gray-300'
-                    : 'bg-gray-100 text-gray-500'
+                    ? 'border-transparent text-muted'
+                    : 'border-transparent text-muted hover:text-ink hover:border-rule'
               }`}
             >
-              {m}월
+              <span className="num">{m}</span>월
             </button>
           )
         })}

@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/auth'
 
+// 탭은 글자만 — 현재 탭은 위쪽 빨간 괘선으로 표시한다
 const tabs = [
-  { to: '/',         label: '대시보드', icon: '📊' },
-  { to: '/input',    label: '입력',     icon: '✏️' },
-  { to: '/monthly',  label: '월별',     icon: '📅' },
-  { to: '/closing',  label: '가마감',   icon: '💰' },
+  { to: '/',         label: '대시보드' },
+  { to: '/input',    label: '입력' },
+  { to: '/monthly',  label: '월별' },
+  { to: '/closing',  label: '가마감' },
 ]
 
 export default function BottomNav() {
@@ -28,20 +29,21 @@ export default function BottomNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex z-40">
+    <nav className="fixed bottom-0 left-0 right-0 bg-sheet border-t border-rule-2 flex z-40">
       {tabs.map((tab) => (
         <NavLink
           key={tab.to}
           to={tab.to}
           end={tab.to === '/'}
           className={({ isActive }) =>
-            `flex-1 flex flex-col items-center justify-center py-2 gap-0.5 text-xs font-medium transition-colors min-h-[56px] ${
-              isActive ? 'text-blue-600' : 'text-gray-400'
+            `flex-1 flex items-center justify-center text-sm min-h-[56px] transition-colors hover:bg-paper ${
+              isActive
+                ? 'text-ink font-semibold shadow-[inset_0_3px_0_var(--color-accent)]'
+                : 'text-muted font-medium'
             }`
           }
         >
-          <span className="text-lg leading-none">{tab.icon}</span>
-          <span>{tab.label}</span>
+          {tab.label}
         </NavLink>
       ))}
 
@@ -52,13 +54,13 @@ export default function BottomNav() {
         disabled={signingOut}
         aria-label="로그아웃"
         title="로그아웃"
-        className="shrink-0 w-11 min-h-[56px] flex items-center justify-center border-l border-gray-100 text-gray-300 active:text-gray-500 active:bg-gray-50 transition-colors disabled:opacity-50"
+        className="shrink-0 w-12 min-h-[56px] flex items-center justify-center border-l border-rule text-muted hover:text-ink hover:bg-paper active:bg-paper-2 transition-colors disabled:opacity-55 disabled:cursor-not-allowed"
       >
         <svg
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="1.75"
           strokeLinecap="round"
           strokeLinejoin="round"
           className="w-5 h-5"

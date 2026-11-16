@@ -9,6 +9,8 @@ import { savePending, getPending, clearPending } from '../utils/offlineQueue'
 import VenueInputCard from '../components/VenueInputCard'
 import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
+import { PageHeader } from '../components/Ledger'
+import { BTN_OUTLINE, BTN_FILLED_LG, INPUT } from '../lib/ledger'
 
 /** 업장별 빈 메모 맵 생성 */
 function emptyMemos(): Record<Venue, string> {
@@ -255,102 +257,121 @@ export default function InputPage() {
   }, [selectedDate, inputs, guestCount, memos, noteLoadFailed])
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-36">
+    <div className="min-h-screen bg-paper text-ink pb-36">
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
       )}
 
-      {/* 헤더 */}
-      <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
-        <div className="max-w-lg mx-auto py-4 flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg font-bold text-gray-900">일매출 입력</h1>
-              {hasPending && (
-                <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5">
-                  저장 대기 중
-                </span>
-              )}
-              {!isOnline && (
-                <span className="text-xs font-bold text-gray-500 bg-gray-100 border border-gray-200 rounded-lg px-2 py-0.5">
-                  오프라인
-                </span>
-              )}
-              {noteLoadFailed && (
-                <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-0.5">
-                  비고·내장객수 불러오기 실패
-                </span>
-              )}
-            </div>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="mt-1 text-sm text-blue-600 font-medium bg-transparent border-none outline-none"
-            />
-            <p className="text-xs text-gray-400">{formatDate(selectedDate)}</p>
-          </div>
+      {/* 헤더 — 제목 오른쪽에 초기화, 아래 줄에 날짜 선택 */}
+      <PageHeader
+        title="일매출 입력"
+        aside={
           <button
+            type="button"
             onClick={() => {
               if (window.confirm('모든 업장 매출을 0으로 초기화할까요?')) {
                 resetInputs()
                 setGuestCountState(0)
               }
             }}
-            className="mt-1 text-sm text-red-500 font-medium px-3 py-1.5 rounded-lg border border-red-200 active:bg-red-50"
+            className={BTN_OUTLINE}
           >
             초기화
           </button>
+        }
+      >
+        <div className="max-w-lg mx-auto pb-3 flex items-center gap-3 flex-wrap">
+          <label htmlFor="input-date" className="text-xs text-muted">날짜</label>
+          <input
+            id="input-date"
+            name="saleDate"
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className={`${INPUT} num`}
+          />
+          <p className="text-sm text-muted">{formatDate(selectedDate)}</p>
         </div>
-      </header>
+      </PageHeader>
 
-      {/* 합계 카드 + 내장객 수 */}
-      <div className="px-4 pt-4 max-w-lg mx-auto">
-        <div className="bg-blue-600 rounded-2xl p-4 text-white shadow">
-          <div className="text-center">
-            <p className="text-sm text-blue-200">전체 순매출</p>
-            <p className="text-2xl font-bold mt-1">{formatCurrency(total)}</p>
+      {/* 상태 표시 — 저장 대기·오프라인은 한 줄 글자로 */}
+      {(hasPending || !isOnline) && (
+        <div className="px-4 mt-3 max-w-lg mx-auto">
+          <p role="status" className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {hasPending && <span className="font-semibold text-accent">저장 대기 중</span>}
+            {!isOnline && <span className="font-semibold text-ink-2">오프라인</span>}
+          </p>
+        </div>
+      )}
+
+      {/* 비고·내장객 수 불러오기 실패 알림 */}
+      {noteLoadFailed && (
+        <div className="px-4 mt-3 max-w-lg mx-auto">
+          <div role="alert" className="bg-paper-2 border-t-2 border-accent px-4 py-3">
+            <p className="text-sm font-semibold text-accent">비고, 내장객수 불러오기 실패</p>
           </div>
-          {/* 내장객 수 입력 */}
-          <div className="mt-3 pt-3 border-t border-blue-500 flex items-center gap-3">
-            <span className="text-sm text-blue-200 whitespace-nowrap">내장객</span>
-            <div className="flex-1 relative">
+        </div>
+      )}
+
+      <main className="px-4 max-w-lg mx-auto">
+        {/* 장부 한 장 — 업장별 행 → 합계(이중 밑줄) → 내장객 */}
+        <section
+          aria-label="업장별 순매출 입력"
+          className="mt-4 bg-sheet border-t-2 border-ink px-4 pt-3 pb-5"
+        >
+          {/* 열 머리 */}
+          <div className="flex items-end justify-between gap-3 border-b-2 border-rule-2 pb-1.5" aria-hidden="true">
+            <span className="text-xs text-muted">업장</span>
+            <span className="text-xs text-muted">순매출(원)</span>
+          </div>
+
+          {/* 업장별 입력 */}
+          {VENUES.map((venue) => (
+            <VenueInputCard
+              key={venue}
+              venue={venue}
+              netSales={inputs[venue]}
+              prevDaySales={prevDayMap[venue] ?? null}
+              memo={memos[venue]}
+              onChange={(value) => setInput(venue, value)}
+              onMemoChange={(m) => setMemos((prev) => ({ ...prev, [venue]: m }))}
+            />
+          ))}
+
+          {/* 합계 행 — 회계장부식 이중 밑줄 */}
+          <div className="flex items-baseline justify-between gap-3 border-t border-ink rule-double py-2.5">
+            <p className="text-sm font-semibold text-ink">전체 순매출</p>
+            <p className="num text-xl font-medium text-ink">{formatCurrency(total)}</p>
+          </div>
+
+          {/* 내장객 수 입력 (업장 구분 없이 하루 1개) */}
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <label htmlFor="input-guest-count" className="text-base text-ink-2">내장객</label>
+            <div className="flex items-center gap-1.5 shrink-0">
               <input
+                id="input-guest-count"
+                name="guestCount"
                 type="text"
                 inputMode="numeric"
                 value={guestCount === 0 ? '' : String(guestCount)}
                 onChange={handleGuestCountChange}
                 placeholder="0"
-                className="w-full text-right pr-7 py-1.5 px-3 rounded-lg bg-blue-500 text-white placeholder-blue-300 text-base font-bold focus:outline-none focus:ring-1 focus:ring-blue-300"
+                className={`${INPUT} num w-40 text-right focus-visible:outline-offset-[-2px]`}
               />
-              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-blue-300">명</span>
+              <span className="text-sm text-muted">명</span>
             </div>
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
 
-      {/* 업장별 입력 */}
-      <div className="px-4 pt-4 space-y-3 max-w-lg mx-auto">
-        {VENUES.map((venue) => (
-          <VenueInputCard
-            key={venue}
-            venue={venue}
-            netSales={inputs[venue]}
-            prevDaySales={prevDayMap[venue] ?? null}
-            memo={memos[venue]}
-            onChange={(value) => setInput(venue, value)}
-            onMemoChange={(m) => setMemos((prev) => ({ ...prev, [venue]: m }))}
-          />
-        ))}
-      </div>
-
-      {/* 저장 버튼 */}
-      <div className="fixed bottom-14 left-0 right-0 px-4 z-30">
+      {/* 저장 버튼 — 하단 탭 바로 위에 고정 */}
+      <div className="fixed bottom-14 left-0 right-0 z-30 bg-paper border-t border-rule px-4 py-2">
         <div className="max-w-lg mx-auto">
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving}
-            className="w-full py-4 rounded-2xl bg-blue-600 text-white font-bold text-base shadow-lg active:scale-95 transition-transform disabled:opacity-50"
+            className={BTN_FILLED_LG}
           >
             {saving ? '저장 중...' : '저장'}
           </button>

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
 import type { DailySales } from '../types/sales'
 import { Venue } from '../types/sales'
 import { formatNumber, parseNumber, formatCurrency } from '../utils/format'
+import { INPUT, VENUE_SWATCH } from '../lib/ledger'
 
 interface VenueInputCardProps {
   venue: Venue
@@ -12,6 +13,7 @@ interface VenueInputCardProps {
   onMemoChange: (memo: string) => void
 }
 
+/** 업장 한 줄 — 장부의 괘선 행. 왼쪽 업장명·전일, 오른쪽 금액, 아래 비고 */
 export default function VenueInputCard({
   venue,
   netSales,
@@ -21,6 +23,8 @@ export default function VenueInputCard({
   onMemoChange,
 }: VenueInputCardProps) {
   const [display, setDisplay] = useState(formatNumber(netSales))
+  // 라벨과 입력칸 연결용 id (업장명이 한글이라 React가 만든 id를 쓴다)
+  const fieldId = useId()
 
   useEffect(() => {
     setDisplay(formatNumber(netSales))
@@ -37,32 +41,44 @@ export default function VenueInputCard({
   const prevNet = prevDaySales ? prevDaySales.food_sales + prevDaySales.store_sales : null
 
   return (
-    <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-bold text-gray-800 text-base">{venue}</h3>
-        {prevNet !== null && (
-          <span className="text-xs text-gray-400">전일 {formatCurrency(prevNet)}</span>
-        )}
-      </div>
-      <div className="relative">
-        <input
-          type="text"
-          inputMode="numeric"
-          value={display}
-          onChange={handleChange}
-          placeholder="0"
-          className="w-full text-right pr-7 py-3 px-4 rounded-xl border border-gray-200 text-lg font-bold text-gray-800 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
-        />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">원</span>
+    <div className="border-t border-rule py-3">
+      <div className="flex items-center justify-between gap-3">
+        {/* 업장명 = 금액 입력칸의 보이는 라벨 */}
+        <div className="min-w-0">
+          <label htmlFor={`${fieldId}-sales`} className="flex items-center gap-2 text-base text-ink-2">
+            <span className={`w-2.5 h-2.5 shrink-0 ${VENUE_SWATCH[venue]}`} aria-hidden="true" />
+            <span className="truncate">{venue}</span>
+          </label>
+          {prevNet !== null && (
+            <p className="mt-0.5 pl-[18px] text-xs text-muted">
+              전일 <span className="num">{formatCurrency(prevNet)}</span>
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <input
+            id={`${fieldId}-sales`}
+            name={`sales-${venue}`}
+            type="text"
+            inputMode="numeric"
+            value={display}
+            onChange={handleChange}
+            placeholder="0"
+            className={`${INPUT} num w-40 text-right focus-visible:outline-offset-[-2px]`}
+          />
+          <span className="text-sm text-muted">원</span>
+        </div>
       </div>
       {/* 비고 입력 */}
       <input
+        name={`memo-${venue}`}
+        aria-label={`${venue} 비고`}
         type="text"
         value={memo}
         onChange={(e) => onMemoChange(e.target.value)}
         placeholder="비고 (우천, 행사, 단체 등)"
         maxLength={50}
-        className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-100 bg-gray-50 text-xs text-gray-600 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-200"
+        className={`${INPUT} mt-2 w-full focus-visible:outline-offset-[-2px]`}
       />
     </div>
   )

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useId } from 'react'
 import { calcClosing } from '../types/closing'
 import type { MonthlyClosing } from '../types/closing'
 import {
@@ -15,6 +15,8 @@ import BottomNav from '../components/BottomNav'
 import Toast from '../components/Toast'
 import ClosingTrendChart from '../components/ClosingTrendChart'
 import MonthYearPicker from '../components/MonthYearPicker'
+import { SectionHead } from '../components/Ledger'
+import { BTN_FILLED_LG, BTN_OUTLINE, INPUT } from '../lib/ledger'
 
 // ── 숫자 입력 헬퍼 ─────────────────────────────────────────
 function fmtAbs(n: number) {
@@ -25,14 +27,28 @@ function parseAbs(s: string) {
   return isNaN(n) ? 0 : Math.abs(n)
 }
 
+/** 음수는 회계장부식 △ 표기 (금액) */
+function fmtSigned(n: number): string {
+  return n < 0 ? `△${Math.abs(n).toLocaleString()}` : n.toLocaleString()
+}
+/** 음수는 회계장부식 △ 표기 (비율, 소수 1자리) */
+function fmtRate(r: number): string {
+  return r < 0 ? `△${Math.abs(r).toFixed(1)}%` : `${r.toFixed(1)}%`
+}
+
+/** 손익 장부 한 행의 열 배치 — 항목 | 부호 | 금액 | 비율 (모든 입력 행이 같은 열을 쓴다) */
+const ROW_GRID = 'grid grid-cols-[4rem_2.5rem_minmax(0,1fr)_3.5rem] items-center gap-2'
+
 function NumInput({
-  label, value, onChange, hint, hintNeg,
+  label, value, onChange, hint, hintNeg, name,
 }: {
-  label: string; value: number; onChange: (v: number) => void; hint?: string; hintNeg?: boolean
+  label: string; value: number; onChange: (v: number) => void; hint?: string; hintNeg?: boolean; name?: string
 }) {
   const isNeg = value < 0
   const [disp, setDisp] = useState(fmtAbs(value))
   useEffect(() => { setDisp(fmtAbs(value)) }, [value])
+  // 라벨과 입력칸을 잇는 고유 id
+  const inputId = useId()
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.replace(/,/g, '')
@@ -46,39 +62,39 @@ function NumInput({
   function toggleSign() { onChange(-value) }
 
   return (
-    <div className="flex items-center gap-2">
-      <label className="text-sm text-gray-600 w-20 shrink-0">{label}</label>
+    <div className={`${ROW_GRID} py-1.5`}>
+      <label htmlFor={inputId} className="text-sm text-ink-2">{label}</label>
+      {/* 부호 전환 — 음수(차감·환입)일 때 빨간 펜 */}
       <button
         type="button"
         onClick={toggleSign}
-        className={`w-8 h-8 rounded-lg text-sm font-bold shrink-0 transition-colors ${
+        aria-pressed={isNeg}
+        aria-label={`${label} 음수 입력`}
+        className={`num w-10 h-10 rounded-[2px] border text-base font-semibold transition-colors active:bg-paper-3 focus-visible:outline-offset-2 ${
           isNeg
-            ? 'bg-red-100 text-red-600 border border-red-200'
-            : 'bg-gray-100 text-gray-500 border border-gray-200'
+            ? 'border-accent text-accent bg-sheet hover:bg-paper-2'
+            : 'border-rule text-muted bg-sheet hover:bg-paper-2'
         }`}
       >
         {isNeg ? '−' : '+'}
       </button>
-      <div className="relative flex-1">
+      <div className="relative min-w-0">
         <input
+          id={inputId}
+          name={name}
           type="text"
           inputMode="numeric"
           value={disp}
           onChange={handleChange}
           placeholder="0"
-          className={`w-full text-right pr-10 py-2.5 px-3 rounded-xl border text-sm font-medium focus:outline-none focus:ring-1 ${
-            isNeg
-              ? 'border-red-200 text-red-600 focus:border-red-400 focus:ring-red-400'
-              : 'border-gray-200 text-gray-800 focus:border-blue-400 focus:ring-blue-400'
-          }`}
+          className={`${INPUT} num w-full text-right pr-10 ${isNeg ? 'text-accent! border-accent!' : ''}`}
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
       </div>
-      {hint && (
-        <span className={`text-xs font-semibold w-14 text-right shrink-0 ${hintNeg ? 'text-red-500' : 'text-blue-600'}`}>
-          {hint}
-        </span>
-      )}
+      {/* 비율 열 — 값이 없어도 칸을 남겨 금액 열을 맞춘다 */}
+      <span className={`num text-right text-sm ${hintNeg ? 'text-accent' : 'text-ink-2'}`}>
+        {hint}
+      </span>
     </div>
   )
 }
@@ -248,19 +264,40 @@ function TargetCompareBadge({
   const good = lowerIsBetter ? diff <= 0 : diff >= 0
   const rate = (actual / target) * 100
   const absDiff = Math.abs(Math.round(diff)).toLocaleString('ko-KR')
-  const icon = good ? '✅' : '⚠️'
   const gapLabel = good
     ? lowerIsBetter ? `${absDiff}천 절감` : `${absDiff}천 초과달성`
     : lowerIsBetter ? `${absDiff}천 초과` : `${absDiff}천 미달`
+  // 목표 안쪽은 흐린 잉크, 목표 밖은 빨간 펜 + △ (80% 미만이면 굵게)
   const cls = good
-    ? 'text-green-600 bg-green-50 border-green-200'
+    ? 'text-muted'
     : rate >= 80
-      ? 'text-amber-600 bg-amber-50 border-amber-200'
-      : 'text-red-600 bg-red-50 border-red-200'
+      ? 'text-accent'
+      : 'text-accent font-semibold'
   return (
-    <span className={`text-xs font-bold px-2 py-0.5 rounded-lg border ${cls}`}>
-      {icon} {gapLabel} ({rate.toFixed(1)}%)
-    </span>
+    <p className={`mt-1 text-right text-xs ${cls}`}>
+      {good ? null : <span aria-hidden="true">△ </span>}
+      {gapLabel} (<span className="num">{rate.toFixed(1)}%</span>)
+    </p>
+  )
+}
+
+/** 비율 행 — 항목 이름 왼쪽, 비율은 오른쪽 비율 열에 */
+function RateRow({ label, value, tone = 'text-ink-2' }: { label: string; value: string; tone?: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-1.5 border-t border-rule">
+      <span className="text-sm text-muted">{label}</span>
+      <span className={`num w-20 text-right text-sm ${tone}`}>{value}</span>
+    </div>
+  )
+}
+
+/** 손익 장부의 묶음 머리 — 항목명(h3)과 오른쪽 동작 */
+function GroupHead({ id, title, children }: { id: string; title: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 pt-4 pb-1">
+      <h3 id={id} className="text-sm font-semibold text-ink">{title}</h3>
+      {children}
+    </div>
   )
 }
 
@@ -448,13 +485,6 @@ export default function ClosingPage() {
     setTimeout(() => setCopied(false), 1500)
   }
 
-  const statCell = (label: string, value: string, highlight?: boolean) => (
-    <div className={`flex justify-between items-center py-1.5 ${highlight ? 'font-bold' : ''}`}>
-      <span className={`text-sm ${highlight ? 'text-gray-900' : 'text-gray-500'}`}>{label}</span>
-      <span className={`text-sm ${highlight ? 'text-blue-600' : 'text-gray-800'}`}>{value}</span>
-    </div>
-  )
-
   const hasSales = fields.sales_total !== 0
 
   // ⚠️ 이번 달 가마감 미입력 경고 — 25일 이후부터 노출
@@ -484,11 +514,11 @@ export default function ClosingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-36">
+    <div className="min-h-screen bg-paper text-ink pb-24">
       {toast !== null && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* 헤더 */}
-      <header className="bg-white border-b border-gray-200 px-4 pt-safe-top">
+      {/* 헤더 — 종이 바탕, 아래 굵은 괘선 */}
+      <header className="bg-paper border-b-2 border-rule-2 px-4 pt-safe-top">
         <MonthYearPicker
           title="가마감"
           subtitle="손익 예상치 — 단위: 천원"
@@ -498,42 +528,192 @@ export default function ClosingPage() {
         />
       </header>
 
-      <div className="px-4 pt-4 max-w-lg mx-auto space-y-3">
+      <main className="px-4 max-w-lg mx-auto">
 
-        {/* ⚠️ 이번 달 가마감 미입력 경고 */}
+        {/* 이번 달 가마감 미입력 경고 */}
         {showClosingWarning ? (
-          <div className="bg-amber-50 rounded-2xl p-4 shadow-sm border border-amber-200">
-            <p className="text-sm font-bold text-amber-700">
-              ⚠️ 이번 달 가마감이 아직 입력되지 않았습니다
+          <div className="mt-4 bg-paper-2 border-t-2 border-accent px-4 py-3">
+            <p className="text-sm font-semibold text-accent">
+              이번 달 가마감이 아직 입력되지 않았습니다
             </p>
-            <p className="mt-1 text-xs text-amber-600">
+            <p className="mt-1 text-xs text-ink-2">
               {selYear}년 {selMonth}월 손익 예상치를 입력하고 저장해주세요.
             </p>
           </div>
         ) : null}
 
-        {/* 📊 추세 차트 */}
-        {history.length > 1 ? (
-          <ClosingTrendChart history={history} currentYear={selYear} currentMonth={selMonth} />
-        ) : null}
+        {/* ── 손익 장부: 매출 → 식재료비 → 인건비 → 제조경비 → 예상이익(이중 밑줄) ── */}
+        <section
+          aria-label="손익 예상치"
+          className="mt-5 bg-sheet border-t-2 border-ink px-4 pb-5"
+        >
+          {/* 매출 */}
+          <div role="group" aria-labelledby="pl-sales">
+            <GroupHead id="pl-sales" title="매출">
+              {dailyTotal !== null ? (
+                <button
+                  type="button"
+                  onClick={() => set('sales_total', dailyTotal)}
+                  className={BTN_OUTLINE}
+                >
+                  일매출 합계 적용 <span className="num">{dailyTotal.toLocaleString()}</span>천원
+                </button>
+              ) : null}
+            </GroupHead>
+            <NumInput label="합계" name="sales_total" value={fields.sales_total} onChange={(v) => set('sales_total', v)} />
+            {/* 목표 매출 대비 진행 막대 — 너비 대신 scaleX */}
+            {target.sales > 0 && fields.sales_total > 0 ? (
+              <div
+                role="progressbar"
+                aria-label="목표 달성률"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(Math.min((fields.sales_total / target.sales) * 100, 100))}
+                className="mt-1 h-1.5 bg-paper-3 overflow-hidden"
+              >
+                <div
+                  className={`progress-fill h-full ${
+                    fields.sales_total >= target.sales ? 'bg-ink' : 'bg-series-3'
+                  }`}
+                  style={{ transform: `scaleX(${Math.min(fields.sales_total / target.sales, 1)})` }}
+                />
+              </div>
+            ) : null}
+            <TargetCompareBadge actual={fields.sales_total} target={target.sales} />
+            {dailyTotal !== null && fields.sales_total !== 0 && fields.sales_total !== dailyTotal ? (
+              <p className="mt-1 text-xs text-accent">
+                일매출 합계(<span className="num">{dailyTotal.toLocaleString()}</span>천원)와 다릅니다
+              </p>
+            ) : null}
+          </div>
 
-        {/* 🎯 목표 설정 */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          {/* 식재료비 */}
+          <div role="group" aria-labelledby="pl-food" className="mt-3 border-t border-rule">
+            <GroupHead id="pl-food" title="식재료비" />
+            <NumInput
+              label="금액"
+              name="food_cost"
+              value={fields.food_cost}
+              onChange={(v) => set('food_cost', v)}
+              hint={hasSales ? `${calc.food_cost_rate.toFixed(1)}%` : ''}
+              hintNeg={calc.food_cost_rate < 0}
+            />
+            <RateRow label="원가율" value={hasSales ? `${calc.food_cost_rate.toFixed(1)}%` : '-'} />
+            <TargetCompareBadge actual={fields.food_cost} target={target.food_cost} lowerIsBetter />
+          </div>
+
+          {/* 인건비 — 세 줄 입력 뒤 소계 */}
+          <div role="group" aria-labelledby="pl-labor" className="mt-3 border-t border-rule">
+            <GroupHead id="pl-labor" title="인건비" />
+            <NumInput label="직영" name="labor_direct"   value={fields.labor_direct}   onChange={(v) => set('labor_direct', v)} />
+            <NumInput label="파견" name="labor_dispatch" value={fields.labor_dispatch} onChange={(v) => set('labor_dispatch', v)} />
+            <NumInput label="지원" name="labor_support"  value={fields.labor_support}  onChange={(v) => set('labor_support', v)} />
+            {/* 소계 행 — 잉크 괘선 위, 금액은 입력칸 숫자 열에 맞춘다 */}
+            <div className={`${ROW_GRID} mt-1 py-2 border-t border-ink`}>
+              <span className="col-span-2 text-sm font-semibold text-ink">합계</span>
+              <span className="pr-3 text-right text-sm font-semibold text-ink">
+                <span className="num">{fmtSigned(calc.labor_total)}</span>
+                <span className="ml-1 text-xs font-normal text-muted">천원</span>
+              </span>
+              <span />
+            </div>
+            <RateRow label="인건비율" value={hasSales ? `${calc.labor_rate.toFixed(1)}%` : '-'} />
+            <TargetCompareBadge actual={calc.labor_total} target={target.labor} lowerIsBetter />
+          </div>
+
+          {/* 제조경비 */}
+          <div role="group" aria-labelledby="pl-mfg" className="mt-3 border-t border-rule">
+            <GroupHead id="pl-mfg" title="제조경비" />
+            <NumInput
+              label="금액"
+              name="manufacturing_cost"
+              value={fields.manufacturing_cost}
+              onChange={(v) => set('manufacturing_cost', v)}
+              hint={hasSales ? `${calc.manufacturing_rate.toFixed(1)}%` : ''}
+              hintNeg={calc.manufacturing_rate < 0}
+            />
+            <RateRow label="경비율" value={hasSales ? `${calc.manufacturing_rate.toFixed(1)}%` : '-'} />
+            <TargetCompareBadge actual={fields.manufacturing_cost} target={target.manufacturing} lowerIsBetter />
+          </div>
+
+          {/* 예상이익 — 장부의 최종 행, 이중 밑줄. 손실은 빨간 펜 △ */}
+          <div role="group" aria-labelledby="pl-profit" className="mt-3 border-t border-rule">
+            <GroupHead id="pl-profit" title="예상이익 (자동계산)" />
+            <div className="flex items-baseline justify-between gap-3 py-2 border-t border-ink rule-double">
+              <span className="text-sm font-semibold text-ink">금액</span>
+              <span className={`text-xl font-semibold ${calc.profit < 0 ? 'text-accent' : 'text-ink'}`}>
+                <span className="num">{fmtSigned(calc.profit)}</span>
+                <span className="ml-1 text-sm font-normal text-muted">천원</span>
+              </span>
+            </div>
+            <RateRow
+              label="이익률"
+              value={hasSales ? fmtRate(calc.profit_rate) : '-'}
+              tone={hasSales && calc.profit_rate < 0 ? 'text-accent font-semibold' : 'text-ink font-semibold'}
+            />
+            {hasSales ? (
+              <RateRow
+                label="Prime Cost (식재비+인건비)"
+                value={`${calc.prime_cost_rate.toFixed(1)}%`}
+                tone={calc.prime_cost_rate > 65 ? 'text-accent font-semibold' : 'text-ink-2'}
+              />
+            ) : null}
+            {target.sales > 0 ? (
+              <TargetCompareBadge actual={calc.profit} target={calcTargetProfit(target)} />
+            ) : null}
+          </div>
+        </section>
+
+        {/* 동작 — 저장 하나만 채움, 나머지는 외곽선(카카오는 브랜드색) */}
+        <div className="mt-4 space-y-2">
           <button
             type="button"
-            onClick={() => setShowTarget(v => !v)}
-            className="w-full flex items-center justify-between px-4 py-3"
+            onClick={handleSave}
+            disabled={saving}
+            className={BTN_FILLED_LG}
           >
-            <span className="text-xs font-bold text-gray-400">🎯 목표 설정</span>
-            <span className="text-xs text-gray-400">{showTarget ? '▲ 접기' : '▼ 펼치기'}</span>
+            {saving ? '저장 중…' : '저장'}
           </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="flex-1 h-9 px-3 text-sm font-medium rounded-[2px] border border-kakao bg-kakao text-kakao-ink hover:opacity-90 active:opacity-80 transition-opacity focus-visible:outline-offset-2"
+            >
+              {copied ? '복사됨!' : '카카오 복사'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFields(EMPTY_FIELDS(selYear, selMonth))}
+              className={`${BTN_OUTLINE} flex-1`}
+            >
+              초기화
+            </button>
+          </div>
+        </div>
+
+        {/* ── 목표 설정 — 접어두는 구역 ── */}
+        <section aria-labelledby="target-title" className="mt-8">
+          <SectionHead id="target-title" title="목표 설정">
+            <button
+              type="button"
+              onClick={() => setShowTarget(v => !v)}
+              aria-expanded={showTarget}
+              aria-controls="target-panel"
+              className={BTN_OUTLINE}
+            >
+              {showTarget ? '▲ 접기' : '▼ 펼치기'}
+            </button>
+          </SectionHead>
           {showTarget ? (
-            <div className="px-4 pb-4 space-y-3 border-t border-gray-50 pt-3">
+            <div id="target-panel" className="mt-2">
               {/* 목표 매출 */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-24 shrink-0">목표 매출</label>
-                <div className="relative flex-1">
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-1.5">
+                <label htmlFor="target-sales" className="text-sm text-ink-2">목표 매출</label>
+                <div className="relative min-w-0">
                   <input
+                    id="target-sales"
+                    name="sales_target"
                     type="text"
                     inputMode="numeric"
                     value={target.sales === 0 ? '' : target.sales.toLocaleString('ko-KR')}
@@ -543,16 +723,18 @@ export default function ClosingPage() {
                       updateTarget('sales', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
-                    className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                    className={`${INPUT} num w-full text-right pr-10`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
                 </div>
               </div>
               {/* 목표 식재비 */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-24 shrink-0">목표 식재비</label>
-                <div className="relative flex-1">
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-1.5 border-t border-rule">
+                <label htmlFor="target-food" className="text-sm text-ink-2">목표 식재비</label>
+                <div className="relative min-w-0">
                   <input
+                    id="target-food"
+                    name="food_cost_target"
                     type="text"
                     inputMode="numeric"
                     value={target.food_cost === 0 ? '' : target.food_cost.toLocaleString('ko-KR')}
@@ -562,16 +744,18 @@ export default function ClosingPage() {
                       updateTarget('food_cost', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
-                    className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                    className={`${INPUT} num w-full text-right pr-10`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
                 </div>
               </div>
               {/* 목표 인건비 */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-24 shrink-0">목표 인건비</label>
-                <div className="relative flex-1">
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-1.5 border-t border-rule">
+                <label htmlFor="target-labor" className="text-sm text-ink-2">목표 인건비</label>
+                <div className="relative min-w-0">
                   <input
+                    id="target-labor"
+                    name="labor_target"
                     type="text"
                     inputMode="numeric"
                     value={target.labor === 0 ? '' : target.labor.toLocaleString('ko-KR')}
@@ -581,16 +765,18 @@ export default function ClosingPage() {
                       updateTarget('labor', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
-                    className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                    className={`${INPUT} num w-full text-right pr-10`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
                 </div>
               </div>
               {/* 목표 제조경비 */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-600 w-24 shrink-0">목표 제조경비</label>
-                <div className="relative flex-1">
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-1.5 border-t border-rule">
+                <label htmlFor="target-mfg" className="text-sm text-ink-2">목표 제조경비</label>
+                <div className="relative min-w-0">
                   <input
+                    id="target-mfg"
+                    name="manufacturing_target"
                     type="text"
                     inputMode="numeric"
                     value={target.manufacturing === 0 ? '' : target.manufacturing.toLocaleString('ko-KR')}
@@ -600,25 +786,25 @@ export default function ClosingPage() {
                       updateTarget('manufacturing', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
-                    className="w-full text-right pr-10 py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:ring-1 focus:border-blue-400 focus:ring-blue-400"
+                    className={`${INPUT} num w-full text-right pr-10`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">천원</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
                 </div>
               </div>
-              {/* 목표 이익 — 자동계산 */}
+              {/* 목표 이익 — 자동계산, 소계처럼 잉크 괘선 위 */}
               {target.sales > 0 ? (() => {
                 const tProfit = calcTargetProfit(target)
                 const tProfitRate = calcTargetProfitRate(target)
                 const isPositive = tProfit >= 0
                 return (
-                  <div className={`flex items-center justify-between rounded-xl px-3 py-2.5 ${isPositive ? 'bg-blue-50 border border-blue-100' : 'bg-red-50 border border-red-100'}`}>
-                    <span className="text-sm font-semibold text-gray-600">목표 이익 (자동)</span>
-                    <div className="text-right">
-                      <span className={`text-sm font-bold ${isPositive ? 'text-blue-600' : 'text-red-500'}`}>
-                        {tProfit.toLocaleString('ko-KR')}천원
+                  <div className="flex items-baseline justify-between gap-3 mt-1 py-2 border-t border-ink">
+                    <span className="text-sm font-semibold text-ink">목표 이익 (자동)</span>
+                    <div className={`text-right ${isPositive ? 'text-ink' : 'text-accent'}`}>
+                      <span className="text-sm font-semibold">
+                        <span className="num">{fmtSigned(tProfit)}</span>천원
                       </span>
-                      <span className={`ml-2 text-xs font-semibold ${isPositive ? 'text-blue-400' : 'text-red-400'}`}>
-                        ({tProfitRate.toFixed(1)}%)
+                      <span className="ml-2 text-xs">
+                        (<span className="num">{fmtRate(tProfitRate)}</span>)
                       </span>
                     </div>
                   </div>
@@ -626,203 +812,67 @@ export default function ClosingPage() {
               })() : null}
             </div>
           ) : null}
-        </div>
+        </section>
 
-        {/* 💰 매출 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-xs font-bold text-gray-400">💰 매출</p>
-              <TargetCompareBadge actual={fields.sales_total} target={target.sales} />
+        {/* ── 연 누적 — 1월부터 선택한 달까지 쌓인 매출·매출이익 ── */}
+        <section aria-labelledby="ytd-title" className="mt-8">
+          <SectionHead id="ytd-title" title={`${selYear}년 누적 (${ytdRangeLabel})`}>
+            <span className="text-xs text-muted">단위: 천원</span>
+          </SectionHead>
+
+          <dl className="mt-1">
+            <div className="flex items-baseline justify-between gap-3 py-2">
+              <dt className="text-sm text-ink-2">누적 매출</dt>
+              <dd className="text-base text-ink">
+                <span className="num">{ytdSales.toLocaleString()}</span>천원
+              </dd>
             </div>
-            {dailyTotal !== null ? (
-              <button
-                type="button"
-                onClick={() => set('sales_total', dailyTotal)}
-                className="text-xs text-blue-600 font-medium px-2.5 py-1 rounded-lg border border-blue-200 active:bg-blue-50 transition-colors shrink-0 text-center leading-tight"
-              >
-                <span className="block">일매출 합계 적용</span>
-                <span className="block">{dailyTotal.toLocaleString()}천원</span>
-              </button>
-            ) : null}
-          </div>
-          <NumInput label="합계" value={fields.sales_total} onChange={(v) => set('sales_total', v)} />
-          {/* 달성률 프로그레스바 */}
-          {target.sales > 0 && fields.sales_total > 0 ? (
-            <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  fields.sales_total >= target.sales ? 'bg-green-500' : 'bg-blue-400'
-                }`}
-                style={{ width: `${Math.min((fields.sales_total / target.sales) * 100, 100)}%` }}
-              />
+            <div className="flex items-baseline justify-between gap-3 py-2 border-t border-ink rule-double">
+              <dt className="text-sm font-semibold text-ink">누적 매출이익</dt>
+              <dd className={`text-xl font-semibold ${ytdProfit >= 0 ? 'text-ink' : 'text-accent'}`}>
+                <span className="num">{fmtSigned(ytdProfit)}</span>
+                <span className="ml-1 text-sm font-normal text-muted">천원</span>
+              </dd>
             </div>
-          ) : null}
-          {dailyTotal !== null && fields.sales_total !== 0 && fields.sales_total !== dailyTotal ? (
-            <p className="mt-2 text-xs text-amber-500 font-medium">
-              ⚠ 일매출 합계({dailyTotal.toLocaleString()}천원)와 다릅니다
-            </p>
-          ) : null}
-        </div>
-
-        {/* 🥩 식재료비 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <p className="text-xs font-bold text-gray-400">🥩 식재료비</p>
-            <TargetCompareBadge actual={fields.food_cost} target={target.food_cost} lowerIsBetter />
-          </div>
-          <NumInput
-            label="금액"
-            value={fields.food_cost}
-            onChange={(v) => set('food_cost', v)}
-            hint={hasSales ? `${calc.food_cost_rate.toFixed(1)}%` : ''}
-            hintNeg={calc.food_cost_rate < 0}
-          />
-          <div className="mt-2 pt-2 border-t border-gray-50">
-            {statCell('원가율', hasSales ? `${calc.food_cost_rate.toFixed(1)}%` : '-')}
-          </div>
-        </div>
-
-        {/* 👤 인건비 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <p className="text-xs font-bold text-gray-400">👤 인건비</p>
-            <TargetCompareBadge actual={calc.labor_total} target={target.labor} lowerIsBetter />
-          </div>
-          <div className="space-y-2.5">
-            <NumInput label="직영" value={fields.labor_direct}   onChange={(v) => set('labor_direct', v)} />
-            <NumInput label="파견" value={fields.labor_dispatch} onChange={(v) => set('labor_dispatch', v)} />
-            <NumInput label="지원" value={fields.labor_support}  onChange={(v) => set('labor_support', v)} />
-          </div>
-          <div className="mt-2 pt-2 border-t border-gray-50 space-y-0.5">
-            {statCell('합계', `${calc.labor_total.toLocaleString()}천원`, true)}
-            {statCell('인건비율', hasSales ? `${calc.labor_rate.toFixed(1)}%` : '-')}
-          </div>
-        </div>
-
-        {/* 🔧 제조경비 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <p className="text-xs font-bold text-gray-400">🔧 제조경비</p>
-            <TargetCompareBadge actual={fields.manufacturing_cost} target={target.manufacturing} lowerIsBetter />
-          </div>
-          <NumInput
-            label="금액"
-            value={fields.manufacturing_cost}
-            onChange={(v) => set('manufacturing_cost', v)}
-            hint={hasSales ? `${calc.manufacturing_rate.toFixed(1)}%` : ''}
-            hintNeg={calc.manufacturing_rate < 0}
-          />
-          <div className="mt-2 pt-2 border-t border-gray-50">
-            {statCell('경비율', hasSales ? `${calc.manufacturing_rate.toFixed(1)}%` : '-')}
-          </div>
-        </div>
-
-        {/* 📈 예상이익 (자동계산) */}
-        <div className={`rounded-2xl p-4 shadow-sm border ${calc.profit >= 0 ? 'bg-blue-600 border-blue-500' : 'bg-red-500 border-red-400'}`}>
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <p className="text-xs font-bold text-blue-200">📈 예상이익 (자동계산)</p>
-            {target.sales > 0 ? (
-              <TargetCompareBadge actual={calc.profit} target={calcTargetProfit(target)} />
-            ) : null}
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-blue-100">금액</span>
-              <span className="text-xl font-bold text-white">
-                {calc.profit.toLocaleString()}천원
-              </span>
+            <div className="flex items-baseline justify-between gap-3 py-2">
+              <dt className="text-sm text-muted">누적 이익률</dt>
+              <dd className={`num text-sm font-semibold ${ytdProfit >= 0 ? 'text-ink' : 'text-accent'}`}>
+                {ytdSales !== 0 ? fmtRate(ytdProfitRate) : '-'}
+              </dd>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-blue-100">이익률</span>
-              <span className="text-base font-bold text-white">
-                {hasSales ? `${calc.profit_rate.toFixed(1)}%` : '-'}
-              </span>
-            </div>
-            {hasSales ? (
-              <div className="flex justify-between items-center pt-1 border-t border-blue-500">
-                <span className="text-xs text-blue-200">Prime Cost (식재비+인건비)</span>
-                <span className={`text-sm font-bold ${calc.prime_cost_rate > 65 ? 'text-yellow-300' : 'text-green-300'}`}>
-                  {calc.prime_cost_rate.toFixed(1)}%{calc.prime_cost_rate > 65 ? ' ⚠' : ''}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        </div>
+          </dl>
 
-        {/* 📊 연 누적 — 1월부터 선택한 달까지 쌓인 매출·매출이익 */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold text-gray-400">
-              📊 {selYear}년 누적 ({ytdRangeLabel})
-            </p>
-            <span className="text-[10px] text-gray-300">단위: 천원</span>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">누적 매출</span>
-              <span className="text-base font-bold text-gray-800">
-                {ytdSales.toLocaleString()}천원
-              </span>
-            </div>
-            <div className="flex justify-between items-center pt-1.5 border-t border-gray-100">
-              <span className="text-sm font-semibold text-gray-700">누적 매출이익</span>
-              <span className={`text-xl font-bold ${ytdProfit >= 0 ? 'text-blue-600' : 'text-red-500'}`}>
-                {ytdProfit.toLocaleString()}천원
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-gray-400">누적 이익률</span>
-              <span className={`text-sm font-bold ${ytdProfit >= 0 ? 'text-blue-600' : 'text-red-500'}`}>
-                {ytdSales !== 0 ? `${ytdProfitRate.toFixed(1)}%` : '-'}
-              </span>
-            </div>
-          </div>
-
-          <p className="text-[10px] text-gray-400 mt-2.5 leading-relaxed">
-            매출이익 = 매출 − 식재료비 − 인건비 − 제조경비
-            <br />
-            {missingMonths.length === 0
-              ? `${ytdRangeLabel} ${selMonth}개월 전부 반영되었습니다`
-              : `${selMonth}개월 중 ${selMonth - missingMonths.length}개월 반영 · ${missingMonths.join('·')}월 미입력`}
+          <p className="mt-2 text-xs text-muted">매출이익 = 매출 − 식재료비 − 인건비 − 제조경비</p>
+          <p className="mt-1 text-xs text-muted">
+            {missingMonths.length === 0 ? (
+              `${ytdRangeLabel} ${selMonth}개월 전부 반영되었습니다`
+            ) : (
+              <>
+                {selMonth}개월 중 {selMonth - missingMonths.length}개월 반영,{' '}
+                <span className="text-accent">{missingMonths.join(', ')}월 미입력</span>
+              </>
+            )}
           </p>
-        </div>
+        </section>
+
+        {/* ── 추세 차트 ── */}
+        {history.length > 1 ? (
+          <div className="mt-8">
+            <ClosingTrendChart history={history} currentYear={selYear} currentMonth={selMonth} />
+          </div>
+        ) : null}
 
         {/* 엑셀 내보내기 — 선택한 달을 끝으로 하는 14개월 가마감 */}
         <button
+          type="button"
           onClick={handleExportCsv}
           disabled={history.length === 0}
-          className="w-full py-3 rounded-2xl bg-white text-blue-600 font-bold text-sm shadow-sm border border-blue-200 active:scale-95 transition-transform disabled:opacity-40"
+          className={`${BTN_OUTLINE} mt-6 w-full disabled:cursor-not-allowed`}
         >
-          엑셀 내보내기 ({HISTORY_MONTHS}개월)
+          엑셀 내보내기 (<span className="num">{HISTORY_MONTHS}</span>개월)
         </button>
 
-        {/* 버튼 영역 */}
-        <div className="grid grid-cols-3 gap-2 pb-2">
-          <button
-            onClick={handleCopy}
-            className="py-4 rounded-2xl font-bold text-sm shadow active:scale-95 transition-transform"
-            style={{ backgroundColor: '#FEE500', color: '#1A1A1A' }}
-          >
-            {copied ? '복사됨! ✓' : '카카오 복사'}
-          </button>
-          <button
-            onClick={() => setFields(EMPTY_FIELDS(selYear, selMonth))}
-            className="py-4 rounded-2xl bg-gray-100 text-gray-600 font-bold text-sm shadow-sm active:scale-95 transition-transform border border-gray-200"
-          >
-            초기화
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="py-4 rounded-2xl bg-blue-600 text-white font-bold text-sm shadow active:scale-95 transition-transform disabled:opacity-50"
-          >
-            {saving ? '저장 중...' : '저장'}
-          </button>
-        </div>
-
-      </div>
+      </main>
 
       <BottomNav />
     </div>
