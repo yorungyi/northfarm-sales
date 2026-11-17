@@ -10,9 +10,9 @@ const ALL_MONTHS: number[] = Array.from({ length: 12 }, (_, i) => i + 1)
  */
 const FALLBACK_YEAR_SPAN = 1
 
-/** 연도 이동 버튼 — 각진 36px 정사각, 가는 괘선 테두리 */
+/** 연도 이동 버튼 — 흰 원형 44px */
 const YEAR_BTN =
-  'w-9 h-9 grid place-items-center rounded-[2px] border border-rule text-ink-2 hover:bg-paper-2 active:bg-paper-3 focus-visible:outline-offset-2 transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
+  'w-11 h-11 grid place-items-center rounded-full bg-sheet text-ink-2 hover:text-ink active:bg-paper-3 focus-visible:outline-offset-2 transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
 
 /** 연도 이동 화살표 — 글자 대신 선으로 그린 꺾쇠 (버튼 이름은 aria-label이 맡는다) */
 function Chevron({ dir }: { dir: 'left' | 'right' }) {
@@ -36,7 +36,7 @@ interface Props {
 
 /**
  * 연도·월 선택기 — 화면 헤더(<header>) 안에 넣어 쓴다.
- * 장부 체계의 PageHeader와 같은 머리 구성(작은 표제 → 제목 → 밑줄 탭)을 따른다.
+ * PageHeader와 같은 머리 구성(작은 표제 → 큰 제목 → 알약 월 탭)을 따른다.
  *
  * 고를 수 있는 범위는 코드에 박지 않고 DB의 첫 매출일에서 구한다.
  * 과거 데이터를 넣으면 코드를 고치지 않아도 그 해가 열린다.
@@ -86,12 +86,12 @@ export default function MonthYearPicker({ title, subtitle, year, month, onChange
   return (
     <>
       {/* 머리 — 작은 표제, 제목, 오른쪽 연도 이동 */}
-      <div className="max-w-lg mx-auto pt-5 pb-2">
-        <p className="text-xs text-muted">노스팜CC</p>
-        <div className="flex items-end justify-between gap-3">
+      <div className="max-w-lg mx-auto pt-6 pb-3">
+        <p className="text-sm text-muted">노스팜CC</p>
+        <div className="mt-0.5 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold text-ink">{title}</h1>
-            {subtitle !== undefined && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
+            <h1 className="text-2xl font-bold text-ink">{title}</h1>
+            {subtitle !== undefined && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
           </div>
           {/* 연도 이동 — 데이터가 있는 첫 해부터 올해까지 */}
           <div role="group" aria-label="연도 선택" className="flex items-center gap-1 shrink-0">
@@ -104,7 +104,7 @@ export default function MonthYearPicker({ title, subtitle, year, month, onChange
             >
               <Chevron dir="left" />
             </button>
-            <span className="w-16 text-center text-sm font-semibold text-ink">
+            <span className="w-14 text-center text-sm font-bold text-ink">
               <span className="num">{year}</span>년
             </span>
             <button
@@ -120,12 +120,12 @@ export default function MonthYearPicker({ title, subtitle, year, month, onChange
         </div>
       </div>
 
-      {/* 월 선택 — 1~12월 전부. 선택한 달은 빨간 밑줄, 아직 오지 않은 달만 눌리지 않게 막는다 */}
+      {/* 월 선택 — 1~12월 전부. 선택한 달은 초록 알약, 아직 오지 않은 달만 눌리지 않게 막는다 */}
       <div
         ref={monthChipsRef}
         role="group"
         aria-label="월 선택"
-        className="max-w-lg mx-auto flex overflow-x-auto -mb-[2px] [scrollbar-width:none]"
+        className="max-w-lg mx-auto flex gap-1.5 overflow-x-auto pb-2 [scrollbar-width:none]"
       >
         {ALL_MONTHS.map((m) => {
           const active = m === month
@@ -137,12 +137,12 @@ export default function MonthYearPicker({ title, subtitle, year, month, onChange
               aria-pressed={active}
               onClick={() => onChange(year, m)}
               disabled={future}
-              className={`shrink-0 px-3 min-h-11 text-sm border-b-2 focus-visible:outline-offset-[-2px] active:bg-paper-2 disabled:opacity-55 disabled:cursor-not-allowed transition-colors ${
+              className={`shrink-0 px-4 min-h-10 rounded-full text-sm focus-visible:outline-offset-0 disabled:opacity-55 disabled:cursor-not-allowed transition-colors ${
                 active
-                  ? 'border-accent text-ink font-semibold'
+                  ? 'bg-brand text-sheet font-bold'
                   : future
-                    ? 'border-transparent text-muted'
-                    : 'border-transparent text-muted hover:text-ink hover:border-rule'
+                    ? 'bg-sheet text-muted'
+                    : 'bg-sheet text-ink-2 font-medium hover:text-ink active:bg-paper-3'
               }`}
             >
               <span className="num">{m}</span>월

@@ -13,7 +13,7 @@ interface VenueInputCardProps {
   onMemoChange: (memo: string) => void
 }
 
-/** 업장 한 줄 — 장부의 괘선 행. 왼쪽 업장명·전일, 오른쪽 금액, 아래 비고 */
+/** 업장 한 줄 — 흰 카드 안의 가는 선 행. 왼쪽 업장명·전일, 오른쪽 금액, 아래 비고 */
 export default function VenueInputCard({
   venue,
   netSales,
@@ -41,16 +41,16 @@ export default function VenueInputCard({
   const prevNet = prevDaySales ? prevDaySales.food_sales + prevDaySales.store_sales : null
 
   return (
-    <div className="border-t border-rule py-3">
+    <div className="border-t border-rule first:border-t-0 py-3.5">
       <div className="flex items-center justify-between gap-3">
         {/* 업장명 = 금액 입력칸의 보이는 라벨 */}
         <div className="min-w-0">
-          <label htmlFor={`${fieldId}-sales`} className="flex items-center gap-2 text-base text-ink-2">
-            <span className={`w-2.5 h-2.5 shrink-0 ${VENUE_SWATCH[venue]}`} aria-hidden="true" />
+          <label htmlFor={`${fieldId}-sales`} className="flex items-center gap-2 text-base font-semibold text-ink">
+            <span className={`w-2.5 h-2.5 shrink-0 rounded-full ${VENUE_SWATCH[venue]}`} aria-hidden="true" />
             <span className="truncate">{venue}</span>
           </label>
           {prevNet !== null && (
-            <p className="mt-0.5 pl-[18px] text-xs text-muted">
+            <p className="mt-0.5 pl-[18px] text-sm text-muted">
               전일 <span className="num">{formatCurrency(prevNet)}</span>
             </p>
           )}
@@ -64,7 +64,7 @@ export default function VenueInputCard({
             value={display}
             onChange={handleChange}
             placeholder="0"
-            className={`${INPUT} num w-40 text-right focus-visible:outline-offset-[-2px]`}
+            className={`${INPUT} num w-40 text-right font-semibold`}
           />
           <span className="text-sm text-muted">원</span>
         </div>
@@ -78,7 +78,7 @@ export default function VenueInputCard({
         onChange={(e) => onMemoChange(e.target.value)}
         placeholder="비고 (우천, 행사, 단체 등)"
         maxLength={50}
-        className={`${INPUT} mt-2 w-full focus-visible:outline-offset-[-2px]`}
+        className={`${INPUT} mt-2 w-full`}
       />
     </div>
   )

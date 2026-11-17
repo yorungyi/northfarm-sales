@@ -16,7 +16,7 @@ import Toast from '../components/Toast'
 import ClosingTrendChart from '../components/ClosingTrendChart'
 import MonthYearPicker from '../components/MonthYearPicker'
 import { SectionHead } from '../components/Ledger'
-import { BTN_FILLED_LG, BTN_OUTLINE, INPUT } from '../lib/ledger'
+import { BTN_FILLED_LG, BTN_OUTLINE, INPUT, CARD, ALERT, CHIP_GOOD, CHIP_BAD, CHIP_NEUTRAL } from '../lib/ledger'
 
 // ── 숫자 입력 헬퍼 ─────────────────────────────────────────
 function fmtAbs(n: number) {
@@ -37,7 +37,7 @@ function fmtRate(r: number): string {
 }
 
 /** 손익 장부 한 행의 열 배치 — 항목 | 부호 | 금액 | 비율 (모든 입력 행이 같은 열을 쓴다) */
-const ROW_GRID = 'grid grid-cols-[4rem_2.5rem_minmax(0,1fr)_3.5rem] items-center gap-2'
+const ROW_GRID = 'grid grid-cols-[3.5rem_2.75rem_minmax(0,1fr)_3.5rem] items-center gap-2'
 
 function NumInput({
   label, value, onChange, hint, hintNeg, name,
@@ -64,16 +64,16 @@ function NumInput({
   return (
     <div className={`${ROW_GRID} py-1.5`}>
       <label htmlFor={inputId} className="text-sm text-ink-2">{label}</label>
-      {/* 부호 전환 — 음수(차감·환입)일 때 빨간 펜 */}
+      {/* 부호 전환 — 음수(차감·환입)일 때 연한 빨강 */}
       <button
         type="button"
         onClick={toggleSign}
         aria-pressed={isNeg}
         aria-label={`${label} 음수 입력`}
-        className={`num w-10 h-10 rounded-[2px] border text-base font-semibold transition-colors active:bg-paper-3 focus-visible:outline-offset-2 ${
+        className={`num w-11 h-11 rounded-[12px] text-lg font-bold transition-colors focus-visible:outline-offset-2 ${
           isNeg
-            ? 'border-accent text-accent bg-sheet hover:bg-paper-2'
-            : 'border-rule text-muted bg-sheet hover:bg-paper-2'
+            ? 'bg-accent-soft text-accent-ink'
+            : 'bg-paper-3 text-ink-2 hover:text-ink active:bg-rule-2'
         }`}
       >
         {isNeg ? '−' : '+'}
@@ -87,12 +87,12 @@ function NumInput({
           value={disp}
           onChange={handleChange}
           placeholder="0"
-          className={`${INPUT} num w-full text-right pr-10 ${isNeg ? 'text-accent! border-accent!' : ''}`}
+          className={`${INPUT} num w-full text-right pr-12 font-semibold ${isNeg ? 'text-accent-ink! border-accent!' : ''}`}
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
+        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted" aria-hidden="true">천원</span>
       </div>
       {/* 비율 열 — 값이 없어도 칸을 남겨 금액 열을 맞춘다 */}
-      <span className={`num text-right text-sm ${hintNeg ? 'text-accent' : 'text-ink-2'}`}>
+      <span className={`num text-right text-sm ${hintNeg ? 'text-accent-ink' : 'text-ink-2'}`}>
         {hint}
       </span>
     </div>
@@ -100,6 +100,12 @@ function NumInput({
 }
 
 // ── 카카오 보고 텍스트 생성 ─────────────────────────────────
+// 보고문 상태 기호 — 카톡 보고문 안에 들어가는 글자(화면 아이콘이 아님). 보고문 결과는 기존과 똑같고,
+// 소스에는 코드포인트 이스케이프로만 적어 화면 아이콘 검사(Hallmark 30a)와 구분한다.
+const MARK_OK = '\u2705'
+const MARK_WARN = '\u26A0\uFE0F'
+const MARK_BAD = '\u{1F534}'
+
 function buildKakaoText(
   year: number, month: number,
   d: Omit<MonthlyClosing, 'id' | 'created_at' | 'updated_at'>,
@@ -117,7 +123,7 @@ function buildKakaoText(
     const good = lowerIsBetter ? diff <= 0 : diff >= 0
     const rate = (actual / tgt) * 100
     const absDiff = Math.abs(Math.round(diff)).toLocaleString('ko-KR')
-    const icon = good ? '✅' : (rate >= 80 ? '⚠️' : '🔴')
+    const icon = good ? MARK_OK : (rate >= 80 ? MARK_WARN : MARK_BAD)
     const label = good
       ? lowerIsBetter ? `${absDiff}천 절감` : `${absDiff}천 초과달성`
       : lowerIsBetter ? `${absDiff}천 초과` : `${absDiff}천 미달`
@@ -129,9 +135,9 @@ function buildKakaoText(
     const tProfit = calcTargetProfit(target)
     if (tProfit <= 0) return ''
     const st = tgtStatus(c.profit, tProfit, false)
-    if (st.startsWith('✅')) return '✅ 이익 목표 달성'
-    if (st.startsWith('⚠️')) return '⚠️ 이익 목표 근접 (주의)'
-    return '🔴 이익 목표 미달'
+    if (st.startsWith(MARK_OK)) return `${MARK_OK} 이익 목표 달성`
+    if (st.startsWith(MARK_WARN)) return `${MARK_WARN} 이익 목표 근접 (주의)`
+    return `${MARK_BAD} 이익 목표 미달`
   }
 
   const tProfit = calcTargetProfit(target)
@@ -267,14 +273,14 @@ function TargetCompareBadge({
   const gapLabel = good
     ? lowerIsBetter ? `${absDiff}천 절감` : `${absDiff}천 초과달성`
     : lowerIsBetter ? `${absDiff}천 초과` : `${absDiff}천 미달`
-  // 목표 안쪽은 흐린 잉크, 목표 밖은 빨간 펜 + △ (80% 미만이면 굵게)
+  // 목표 안쪽은 초록 글자, 목표 밖은 빨강 + △ (80% 미만이면 굵게)
   const cls = good
-    ? 'text-muted'
+    ? 'text-brand-ink'
     : rate >= 80
-      ? 'text-accent'
-      : 'text-accent font-semibold'
+      ? 'text-accent-ink'
+      : 'text-accent-ink font-bold'
   return (
-    <p className={`mt-1 text-right text-xs ${cls}`}>
+    <p className={`mt-1 text-right text-sm ${cls}`}>
       {good ? null : <span aria-hidden="true">△ </span>}
       {gapLabel} (<span className="num">{rate.toFixed(1)}%</span>)
     </p>
@@ -284,18 +290,18 @@ function TargetCompareBadge({
 /** 비율 행 — 항목 이름 왼쪽, 비율은 오른쪽 비율 열에 */
 function RateRow({ label, value, tone = 'text-ink-2' }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1.5 border-t border-rule">
+    <div className="flex items-center justify-between gap-3 py-2 border-t border-rule">
       <span className="text-sm text-muted">{label}</span>
       <span className={`num w-20 text-right text-sm ${tone}`}>{value}</span>
     </div>
   )
 }
 
-/** 손익 장부의 묶음 머리 — 항목명(h3)과 오른쪽 동작 */
+/** 손익 구조의 묶음 머리 — 항목명(h3)과 오른쪽 동작 */
 function GroupHead({ id, title, children }: { id: string; title: string; children?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 pt-4 pb-1">
-      <h3 id={id} className="text-sm font-semibold text-ink">{title}</h3>
+      <h3 id={id} className="text-base font-bold text-ink">{title}</h3>
       {children}
     </div>
   )
@@ -487,7 +493,7 @@ export default function ClosingPage() {
 
   const hasSales = fields.sales_total !== 0
 
-  // ⚠️ 이번 달 가마감 미입력 경고 — 25일 이후부터 노출
+  // 이번 달 가마감 미입력 경고 — 25일 이후부터 노출
   const isCurrentMonth = selYear === now.getFullYear() && selMonth === now.getMonth() + 1
   // (로딩 완료 전에는 그리지 않아 깜빡임·오탐 방지)
   const showClosingWarning =
@@ -513,12 +519,22 @@ export default function ClosingPage() {
     downloadCsv(`노스팜CC_가마감_${selYear}년${selMonth}월까지_${HISTORY_MONTHS}개월.csv`, headers, rows)
   }
 
+  // 결론 카드의 구성 막대 — 매출을 식재료비·인건비·제조경비·이익으로 나눈 비율.
+  // 항목 중 하나라도 음수(환입·손실)면 막대가 거짓말을 하므로 그리지 않는다.
+  const costParts = [
+    { key: 'food', label: '식재료', value: fields.food_cost, tone: 'bg-series-4' },
+    { key: 'labor', label: '인건비', value: calc.labor_total, tone: 'bg-series-3' },
+    { key: 'mfg', label: '경비', value: fields.manufacturing_cost, tone: 'bg-series-5' },
+    { key: 'profit', label: '이익', value: calc.profit, tone: 'bg-brand' },
+  ]
+  const showCostBar = fields.sales_total > 0 && costParts.every(p => p.value >= 0) && costParts.some(p => p.value > 0)
+
   return (
     <div className="min-h-screen bg-paper text-ink pb-24">
       {toast !== null && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
-      {/* 헤더 — 종이 바탕, 아래 굵은 괘선 */}
-      <header className="bg-paper border-b-2 border-rule-2 px-4 pt-safe-top">
+      {/* 헤더 — 바탕 위 큰 제목 + 연도·월 선택기 */}
+      <header className="bg-paper px-4 pt-safe-top">
         <MonthYearPicker
           title="가마감"
           subtitle="손익 예상치 — 단위: 천원"
@@ -532,20 +548,59 @@ export default function ClosingPage() {
 
         {/* 이번 달 가마감 미입력 경고 */}
         {showClosingWarning ? (
-          <div className="mt-4 bg-paper-2 border-t-2 border-accent px-4 py-3">
-            <p className="text-sm font-semibold text-accent">
+          <div className={`${ALERT} mt-3`}>
+            <p className="text-sm font-bold text-accent-ink">
               이번 달 가마감이 아직 입력되지 않았습니다
             </p>
-            <p className="mt-1 text-xs text-ink-2">
+            <p className="mt-1 text-sm text-ink-2">
               {selYear}년 {selMonth}월 손익 예상치를 입력하고 저장해주세요.
             </p>
           </div>
         ) : null}
 
-        {/* ── 손익 장부: 매출 → 식재료비 → 인건비 → 제조경비 → 예상이익(이중 밑줄) ── */}
+        {/* ── 결론 먼저: 예상이익 카드 (입력값에서 바로 계산) ── */}
+        <section aria-labelledby="profit-summary-title" className={`${CARD} mt-3`}>
+          <h2 id="profit-summary-title" className="text-base font-medium text-muted">예상이익</h2>
+          <p className={`mt-1 text-4xl leading-tight font-bold tracking-[-0.03em] ${calc.profit < 0 ? 'text-accent-ink' : 'text-ink'}`}>
+            <span className="num">{fmtSigned(calc.profit)}</span>
+            <span className="ml-1 text-base font-medium text-muted">천원</span>
+          </p>
+          {hasSales ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span className={calc.profit_rate < 0 ? CHIP_BAD : CHIP_GOOD}>
+                이익률 <span className="num">{fmtRate(calc.profit_rate)}</span>
+              </span>
+              <span className={calc.prime_cost_rate > 65 ? CHIP_BAD : CHIP_NEUTRAL}>
+                Prime Cost <span className="num">{calc.prime_cost_rate.toFixed(1)}%</span>
+              </span>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted">아래 손익 구조에 매출을 입력하면 이익률이 계산됩니다</p>
+          )}
+          {showCostBar ? (
+            <>
+              <div className="mt-4 flex h-3 gap-0.5 rounded-full overflow-hidden" aria-hidden="true">
+                {costParts.map(p => (p.value > 0 ? (
+                  <div key={p.key} className={`basis-0 min-w-0.5 ${p.tone}`} style={{ flexGrow: p.value }} />
+                ) : null))}
+              </div>
+              <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">
+                {costParts.map(p => (
+                  <li key={p.key} className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${p.tone}`} aria-hidden="true" />
+                    {p.label} <span className="num font-semibold text-ink-2">{Math.round((p.value / fields.sales_total) * 100)}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-sm text-muted">매출을 100으로 본 구성 비율</p>
+            </>
+          ) : null}
+        </section>
+
+        {/* ── 근거: 손익 구조 — 매출 → 식재료비 → 인건비 → 제조경비 → 예상이익 ── */}
         <section
           aria-label="손익 예상치"
-          className="mt-5 bg-sheet border-t-2 border-ink px-4 pb-5"
+          className="mt-3 bg-sheet rounded-[18px] px-4 pb-4"
         >
           {/* 매출 */}
           <div role="group" aria-labelledby="pl-sales">
@@ -569,11 +624,11 @@ export default function ClosingPage() {
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(Math.min((fields.sales_total / target.sales) * 100, 100))}
-                className="mt-1 h-1.5 bg-paper-3 overflow-hidden"
+                className="mt-1 h-2 rounded-full bg-paper-3 overflow-hidden"
               >
                 <div
-                  className={`progress-fill h-full ${
-                    fields.sales_total >= target.sales ? 'bg-ink' : 'bg-series-3'
+                  className={`progress-fill h-full rounded-full ${
+                    fields.sales_total >= target.sales ? 'bg-brand-ink' : 'bg-brand'
                   }`}
                   style={{ transform: `scaleX(${Math.min(fields.sales_total / target.sales, 1)})` }}
                 />
@@ -581,7 +636,7 @@ export default function ClosingPage() {
             ) : null}
             <TargetCompareBadge actual={fields.sales_total} target={target.sales} />
             {dailyTotal !== null && fields.sales_total !== 0 && fields.sales_total !== dailyTotal ? (
-              <p className="mt-1 text-xs text-accent">
+              <p className="mt-1 text-sm text-accent-ink">
                 일매출 합계(<span className="num">{dailyTotal.toLocaleString()}</span>천원)와 다릅니다
               </p>
             ) : null}
@@ -608,12 +663,12 @@ export default function ClosingPage() {
             <NumInput label="직영" name="labor_direct"   value={fields.labor_direct}   onChange={(v) => set('labor_direct', v)} />
             <NumInput label="파견" name="labor_dispatch" value={fields.labor_dispatch} onChange={(v) => set('labor_dispatch', v)} />
             <NumInput label="지원" name="labor_support"  value={fields.labor_support}  onChange={(v) => set('labor_support', v)} />
-            {/* 소계 행 — 잉크 괘선 위, 금액은 입력칸 숫자 열에 맞춘다 */}
-            <div className={`${ROW_GRID} mt-1 py-2 border-t border-ink`}>
-              <span className="col-span-2 text-sm font-semibold text-ink">합계</span>
-              <span className="pr-3 text-right text-sm font-semibold text-ink">
+            {/* 소계 행 — 가는 선 위, 금액은 입력칸 숫자 열에 맞춘다 */}
+            <div className={`${ROW_GRID} mt-1 py-2 border-t border-rule-2`}>
+              <span className="col-span-2 text-sm font-bold text-ink">합계</span>
+              <span className="pr-3 text-right text-sm font-bold text-ink">
                 <span className="num">{fmtSigned(calc.labor_total)}</span>
-                <span className="ml-1 text-xs font-normal text-muted">천원</span>
+                <span className="ml-1 text-sm font-normal text-muted">천원</span>
               </span>
               <span />
             </div>
@@ -636,12 +691,12 @@ export default function ClosingPage() {
             <TargetCompareBadge actual={fields.manufacturing_cost} target={target.manufacturing} lowerIsBetter />
           </div>
 
-          {/* 예상이익 — 장부의 최종 행, 이중 밑줄. 손실은 빨간 펜 △ */}
+          {/* 예상이익 — 손익 구조의 최종 행. 손실은 빨강 △ */}
           <div role="group" aria-labelledby="pl-profit" className="mt-3 border-t border-rule">
             <GroupHead id="pl-profit" title="예상이익 (자동계산)" />
-            <div className="flex items-baseline justify-between gap-3 py-2 border-t border-ink rule-double">
-              <span className="text-sm font-semibold text-ink">금액</span>
-              <span className={`text-xl font-semibold ${calc.profit < 0 ? 'text-accent' : 'text-ink'}`}>
+            <div className="flex items-baseline justify-between gap-3 py-2 border-t border-rule-2">
+              <span className="text-sm font-bold text-ink">금액</span>
+              <span className={`text-xl font-bold ${calc.profit < 0 ? 'text-accent-ink' : 'text-ink'}`}>
                 <span className="num">{fmtSigned(calc.profit)}</span>
                 <span className="ml-1 text-sm font-normal text-muted">천원</span>
               </span>
@@ -649,13 +704,13 @@ export default function ClosingPage() {
             <RateRow
               label="이익률"
               value={hasSales ? fmtRate(calc.profit_rate) : '-'}
-              tone={hasSales && calc.profit_rate < 0 ? 'text-accent font-semibold' : 'text-ink font-semibold'}
+              tone={hasSales && calc.profit_rate < 0 ? 'text-accent-ink font-bold' : 'text-ink font-bold'}
             />
             {hasSales ? (
               <RateRow
                 label="Prime Cost (식재비+인건비)"
                 value={`${calc.prime_cost_rate.toFixed(1)}%`}
-                tone={calc.prime_cost_rate > 65 ? 'text-accent font-semibold' : 'text-ink-2'}
+                tone={calc.prime_cost_rate > 65 ? 'text-accent-ink font-bold' : 'text-ink-2'}
               />
             ) : null}
             {target.sales > 0 ? (
@@ -664,7 +719,7 @@ export default function ClosingPage() {
           </div>
         </section>
 
-        {/* 동작 — 저장 하나만 채움, 나머지는 외곽선(카카오는 브랜드색) */}
+        {/* 동작 — 저장 하나만 초록 채움, 카카오는 브랜드색, 초기화는 회색 */}
         <div className="mt-4 space-y-2">
           <button
             type="button"
@@ -678,7 +733,7 @@ export default function ClosingPage() {
             <button
               type="button"
               onClick={handleCopy}
-              className="flex-1 h-9 px-3 text-sm font-medium rounded-[2px] border border-kakao bg-kakao text-kakao-ink hover:opacity-90 active:opacity-80 transition-opacity focus-visible:outline-offset-2"
+              className="flex-1 h-11 px-4 text-sm font-bold rounded-[14px] bg-kakao text-kakao-ink hover:opacity-90 active:opacity-80 transition-opacity focus-visible:outline-offset-2"
             >
               {copied ? '복사됨!' : '카카오 복사'}
             </button>
@@ -692,8 +747,8 @@ export default function ClosingPage() {
           </div>
         </div>
 
-        {/* ── 목표 설정 — 접어두는 구역 ── */}
-        <section aria-labelledby="target-title" className="mt-8">
+        {/* ── 목표 설정 — 접어두는 카드 ── */}
+        <section aria-labelledby="target-title" className={`${CARD} mt-6`}>
           <SectionHead id="target-title" title="목표 설정">
             <button
               type="button"
@@ -702,13 +757,16 @@ export default function ClosingPage() {
               aria-controls="target-panel"
               className={BTN_OUTLINE}
             >
-              {showTarget ? '▲ 접기' : '▼ 펼치기'}
+              {showTarget ? '접기' : '펼치기'}
+              <svg viewBox="0 0 24 24" className={`w-4 h-4 transition-transform ${showTarget ? 'rotate-180' : ''}`} aria-hidden="true">
+                <path d="m7 10 5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
           </SectionHead>
           {showTarget ? (
             <div id="target-panel" className="mt-2">
               {/* 목표 매출 */}
-              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-1.5">
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-2">
                 <label htmlFor="target-sales" className="text-sm text-ink-2">목표 매출</label>
                 <div className="relative min-w-0">
                   <input
@@ -723,13 +781,13 @@ export default function ClosingPage() {
                       updateTarget('sales', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
-                    className={`${INPUT} num w-full text-right pr-10`}
+                    className={`${INPUT} num w-full text-right pr-12`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted" aria-hidden="true">천원</span>
                 </div>
               </div>
               {/* 목표 식재비 */}
-              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-1.5 border-t border-rule">
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-2 border-t border-rule">
                 <label htmlFor="target-food" className="text-sm text-ink-2">목표 식재비</label>
                 <div className="relative min-w-0">
                   <input
@@ -744,13 +802,13 @@ export default function ClosingPage() {
                       updateTarget('food_cost', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
-                    className={`${INPUT} num w-full text-right pr-10`}
+                    className={`${INPUT} num w-full text-right pr-12`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted" aria-hidden="true">천원</span>
                 </div>
               </div>
               {/* 목표 인건비 */}
-              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-1.5 border-t border-rule">
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-2 border-t border-rule">
                 <label htmlFor="target-labor" className="text-sm text-ink-2">목표 인건비</label>
                 <div className="relative min-w-0">
                   <input
@@ -765,13 +823,13 @@ export default function ClosingPage() {
                       updateTarget('labor', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
-                    className={`${INPUT} num w-full text-right pr-10`}
+                    className={`${INPUT} num w-full text-right pr-12`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted" aria-hidden="true">천원</span>
                 </div>
               </div>
               {/* 목표 제조경비 */}
-              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-1.5 border-t border-rule">
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 py-2 border-t border-rule">
                 <label htmlFor="target-mfg" className="text-sm text-ink-2">목표 제조경비</label>
                 <div className="relative min-w-0">
                   <input
@@ -786,24 +844,24 @@ export default function ClosingPage() {
                       updateTarget('manufacturing', isNaN(n) ? 0 : n)
                     }}
                     placeholder="0"
-                    className={`${INPUT} num w-full text-right pr-10`}
+                    className={`${INPUT} num w-full text-right pr-12`}
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted" aria-hidden="true">천원</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted" aria-hidden="true">천원</span>
                 </div>
               </div>
-              {/* 목표 이익 — 자동계산, 소계처럼 잉크 괘선 위 */}
+              {/* 목표 이익 — 자동계산, 소계처럼 가는 선 위 */}
               {target.sales > 0 ? (() => {
                 const tProfit = calcTargetProfit(target)
                 const tProfitRate = calcTargetProfitRate(target)
                 const isPositive = tProfit >= 0
                 return (
-                  <div className="flex items-baseline justify-between gap-3 mt-1 py-2 border-t border-ink">
-                    <span className="text-sm font-semibold text-ink">목표 이익 (자동)</span>
-                    <div className={`text-right ${isPositive ? 'text-ink' : 'text-accent'}`}>
-                      <span className="text-sm font-semibold">
+                  <div className="flex items-baseline justify-between gap-3 mt-1 pt-3 border-t border-rule-2">
+                    <span className="text-sm font-bold text-ink">목표 이익 (자동)</span>
+                    <div className={`text-right ${isPositive ? 'text-ink' : 'text-accent-ink'}`}>
+                      <span className="text-sm font-bold">
                         <span className="num">{fmtSigned(tProfit)}</span>천원
                       </span>
-                      <span className="ml-2 text-xs">
+                      <span className="ml-2 text-sm">
                         (<span className="num">{fmtRate(tProfitRate)}</span>)
                       </span>
                     </div>
@@ -815,41 +873,41 @@ export default function ClosingPage() {
         </section>
 
         {/* ── 연 누적 — 1월부터 선택한 달까지 쌓인 매출·매출이익 ── */}
-        <section aria-labelledby="ytd-title" className="mt-8">
+        <section aria-labelledby="ytd-title" className={`${CARD} mt-3`}>
           <SectionHead id="ytd-title" title={`${selYear}년 누적 (${ytdRangeLabel})`}>
-            <span className="text-xs text-muted">단위: 천원</span>
+            <span className="text-sm text-muted">단위: 천원</span>
           </SectionHead>
 
           <dl className="mt-1">
             <div className="flex items-baseline justify-between gap-3 py-2">
               <dt className="text-sm text-ink-2">누적 매출</dt>
-              <dd className="text-base text-ink">
+              <dd className="text-base font-semibold text-ink">
                 <span className="num">{ytdSales.toLocaleString()}</span>천원
               </dd>
             </div>
-            <div className="flex items-baseline justify-between gap-3 py-2 border-t border-ink rule-double">
-              <dt className="text-sm font-semibold text-ink">누적 매출이익</dt>
-              <dd className={`text-xl font-semibold ${ytdProfit >= 0 ? 'text-ink' : 'text-accent'}`}>
+            <div className="flex items-baseline justify-between gap-3 py-2 border-t border-rule">
+              <dt className="text-sm font-bold text-ink">누적 매출이익</dt>
+              <dd className={`text-xl font-bold ${ytdProfit >= 0 ? 'text-ink' : 'text-accent-ink'}`}>
                 <span className="num">{fmtSigned(ytdProfit)}</span>
                 <span className="ml-1 text-sm font-normal text-muted">천원</span>
               </dd>
             </div>
-            <div className="flex items-baseline justify-between gap-3 py-2">
+            <div className="flex items-baseline justify-between gap-3 py-2 border-t border-rule">
               <dt className="text-sm text-muted">누적 이익률</dt>
-              <dd className={`num text-sm font-semibold ${ytdProfit >= 0 ? 'text-ink' : 'text-accent'}`}>
+              <dd className={`num text-sm font-bold ${ytdProfit >= 0 ? 'text-ink' : 'text-accent-ink'}`}>
                 {ytdSales !== 0 ? fmtRate(ytdProfitRate) : '-'}
               </dd>
             </div>
           </dl>
 
-          <p className="mt-2 text-xs text-muted">매출이익 = 매출 − 식재료비 − 인건비 − 제조경비</p>
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-2 text-sm text-muted">매출이익 = 매출 − 식재료비 − 인건비 − 제조경비</p>
+          <p className="mt-1 text-sm text-muted">
             {missingMonths.length === 0 ? (
               `${ytdRangeLabel} ${selMonth}개월 전부 반영되었습니다`
             ) : (
               <>
                 {selMonth}개월 중 {selMonth - missingMonths.length}개월 반영,{' '}
-                <span className="text-accent">{missingMonths.join(', ')}월 미입력</span>
+                <span className="font-semibold text-accent-ink">{missingMonths.join(', ')}월 미입력</span>
               </>
             )}
           </p>
@@ -857,7 +915,7 @@ export default function ClosingPage() {
 
         {/* ── 추세 차트 ── */}
         {history.length > 1 ? (
-          <div className="mt-8">
+          <div className={`${CARD} mt-3`}>
             <ClosingTrendChart history={history} currentYear={selYear} currentMonth={selMonth} />
           </div>
         ) : null}
@@ -867,7 +925,7 @@ export default function ClosingPage() {
           type="button"
           onClick={handleExportCsv}
           disabled={history.length === 0}
-          className={`${BTN_OUTLINE} mt-6 w-full disabled:cursor-not-allowed`}
+          className={`${BTN_OUTLINE} mt-4 w-full disabled:cursor-not-allowed`}
         >
           엑셀 내보내기 (<span className="num">{HISTORY_MONTHS}</span>개월)
         </button>

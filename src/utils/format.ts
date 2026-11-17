@@ -37,3 +37,19 @@ export function calcChangeRate(current: number, previous: number): number | null
   if (previous === 0) return null
   return Math.round(((current - previous) / previous) * 100)
 }
+
+/**
+ * 큰 금액을 억·만 단위로 짧게 (화면의 주인공 숫자용). 만원 미만은 반올림한다.
+ * 예: 128,452,300 → "1억 2,845만원", 100,000,000 → "1억원", 5,120,000 → "512만원"
+ * 1만원 미만(0 포함)은 원 단위 그대로 쓴다.
+ */
+export function formatKoreanWon(won: number): string {
+  if (Math.abs(won) < 10000) return formatCurrency(won)
+  const sign = won < 0 ? '-' : ''
+  const man = Math.round(Math.abs(won) / 10000)
+  const eok = Math.floor(man / 10000)
+  const rest = man % 10000
+  if (eok === 0) return `${sign}${rest.toLocaleString('ko-KR')}만원`
+  if (rest === 0) return `${sign}${eok.toLocaleString('ko-KR')}억원`
+  return `${sign}${eok.toLocaleString('ko-KR')}억 ${rest.toLocaleString('ko-KR')}만원`
+}

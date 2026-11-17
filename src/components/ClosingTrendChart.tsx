@@ -35,7 +35,7 @@ interface Props {
   currentMonth: number
 }
 
-/** 차트 색 — 장부 토큰에서 한 번 읽는다 (원가 3계열은 잉크 명도 + 점선 무늬, 이익률만 빨간 펜) */
+/** 차트 색 — 토큰에서 한 번 읽는다 (원가 3계열은 잉크·회색 명도 + 점선 무늬, 이익률만 브랜드 초록) */
 interface TrendColors {
   barBase: string     // 지난 달 매출 막대
   barCurrent: string  // 선택한 달 매출 막대
@@ -48,11 +48,11 @@ interface TrendColors {
 function readTrendColors(): TrendColors {
   return {
     barBase: tokenColor('--color-series-5'),
-    barCurrent: tokenColor('--color-series-4'),
-    food: tokenColor('--color-series-1'),
-    labor: tokenColor('--color-series-2'),
-    manufacturing: tokenColor('--color-series-3'),
-    profit: tokenColor('--color-accent'),
+    barCurrent: tokenColor('--color-series-3'),
+    food: tokenColor('--color-ink'),
+    labor: tokenColor('--color-muted'),
+    manufacturing: tokenColor('--color-series-4'),
+    profit: tokenColor('--color-brand'),
   }
 }
 
@@ -61,7 +61,7 @@ export default function ClosingTrendChart({ history, currentYear, currentMonth }
   const tokens = useMemo(() => readChartTokens(), [])
   const colors = useMemo(() => readTrendColors(), [])
 
-  // 축·범례 공통 글꼴 — 숫자 전용 글꼴, 라벨 잉크색
+  // 축·범례 공통 글꼴 — 본문 글꼴, 라벨 보조 잉크색
   const options = useMemo(() => {
     const font = { size: 11, family: tokens.font }
     return {
@@ -153,15 +153,15 @@ export default function ClosingTrendChart({ history, currentYear, currentMonth }
           data: salesData,
           backgroundColor: bgColors,
           yAxisID: 'y',
-          borderRadius: 0,
+          borderRadius: 4,
           maxBarThickness: 24,
           order: 2,
         },
-        // 원가 3계열 — 잉크 명도와 점선 무늬로 구분 (색만으로 구분하지 않는다)
+        // 원가 3계열 — 잉크·회색 명도와 점선 무늬로 구분 (색만으로 구분하지 않는다)
         { ...lineBase, label: '식재비율(%)',   data: foodRates,          borderColor: colors.food,          pointBackgroundColor: colors.food,          borderDash: [] },
         { ...lineBase, label: '인건비율(%)',   data: laborRates,         borderColor: colors.labor,         pointBackgroundColor: colors.labor,         borderDash: [6, 3] },
         { ...lineBase, label: '제조경비율(%)', data: manufacturingRates, borderColor: colors.manufacturing, pointBackgroundColor: colors.manufacturing, borderDash: [2, 3] },
-        // 이익률 — 화면이 지목하는 한 계열, 빨간 펜
+        // 이익률 — 화면이 지목하는 한 계열, 브랜드 초록
         { ...lineBase, label: '이익률(%)',     data: profitRates,        borderColor: colors.profit,        pointBackgroundColor: colors.profit,        borderDash: [] },
       ],
     }

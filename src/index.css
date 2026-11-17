@@ -1,9 +1,9 @@
-/* Hallmark · shape: app screen · genre: editorial · theme: Almanac (deal 2/3, seed golf-club-restaurant-manager-0d28·8335a4d3·2026-11-16·r0) · redesign: full
- * nav: kept (bottom tab bar, emoji removed) · signature: the venue ledger with a double-ruled total · states: loading, partial failure, empty
- * axes: light/grotesk-sans/chromatic-red · posture: restrained · contrast: pass · v2.0.0
- * swap: Almanac's slate stock warmed to cream paper and its magenta turned ledger red, by the owner's pick of a ledger tone; Hanken/Newsreader swapped for IBM Plex Sans KR (Hangul) */
-/* Hallmark · waive 30a ClosingPage.tsx:120,132,133 · the ✅/⚠️ are characters inside the KakaoTalk report text copied to the clipboard (the owner's report format, read by startsWith logic), not icons on screen */
-/* Hallmark · pre-emit critique: P3 H3 E3 S3 R2 V3 · weakest: R (two Chart.js bar charts remain), restyled to one ink ramp with the argued bar in red */
+/* Hallmark · shape: app screen · genre: utility · theme: custom (1안 클리어, picked by the owner from .hallmark/storyboard.html) · redesign: full
+ * nav: kept (bottom tab bar, now inline SVG icon + label) · footer: none (app screen) · signature: one big figure per screen over white 18px cards, and the monthly golf scorecard (circle at or over the daily par, square under it)
+ * states: loading, partial failure, empty, offline queue · axes: light/neo-grotesk-sans/chromatic-green · posture: restrained · contrast: pass · v2.0.0
+ * swap: the ledger (cream paper, ink rules, Plex Mono, red pen) replaced by a cool-gray bank-app grammar; Pretendard Variable for text and figures, tabular-nums for columns */
+/* Hallmark · waive 22 · --color-sheet is oklch(100% 0 0) · the owner picked pure white cards on cool-gray paper from the storyboard, so the card face stays neutral white */
+/* Hallmark · pre-emit critique: P3 H3 E3 S3 R2 V3 · weakest: R (two Chart.js bar charts remain), restyled to gray bars with the argued bar in fairway green */
 @import "tailwindcss";
 @import "./styles/tokens.css";
 @import "./styles/base.css" layer(base);
@@ -15,20 +15,24 @@
 }
 
 @layer components {
-  /* 숫자 — 고정폭, 자릿수 정렬 */
+  /* 숫자 — 본문과 같은 글꼴, 자릿수만 고정폭으로 맞춰 세로 정렬한다 (굵게 써도 폭이 같다) */
   .num {
     font-family: var(--font-outlier);
     font-variant-numeric: tabular-nums;
-  }
-
-  /* 합계 행 — 회계장부식 이중 밑줄 */
-  .rule-double {
-    border-bottom: 3px double var(--color-ink);
+    font-feature-settings: "tnum" 1;
+    letter-spacing: -0.01em;
   }
 
   /* 목표 진행 막대 — 너비 대신 transform으로만 움직인다 */
   .progress-fill {
     transform-origin: left center;
     transition: transform var(--dur-long) var(--ease-out);
+  }
+
+  /* 입력칸 포커스 — 테두리를 초록으로 바꾸고 바깥 윤곽선은 겹치지 않게 접는다 */
+  .field-focus:focus-visible {
+    outline: none;
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 1px var(--color-brand);
   }
 }

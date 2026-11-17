@@ -1,11 +1,12 @@
 /**
- * 장부 디자인 공용 값 — 모든 화면이 같은 버튼·견본색·증감 표기·차트 색을 쓰도록 한 곳에 모은다.
+ * 1안(클리어) 공용 값 — 모든 화면이 같은 버튼·카드·견본색·증감 표기·차트 색을 쓰도록 한 곳에 모은다.
+ * 파일 이름은 장부 체계 때 이름(ledger)을 그대로 둔다 — import 경로를 바꾸지 않기 위함.
  * 색은 src/styles/tokens.css 토큰만 쓴다 (여기서 색 값을 새로 만들지 않는다).
  */
 import type { ChartOptions } from 'chart.js'
 import { Venue } from '../types/sales'
 
-// 업장별 견본색 — 잉크 명도 단계 (--color-series-*). 글자에는 쓰지 않고 견본·띠그래프·막대에만 쓴다
+// 업장별 견본색 — 초록 명도 3단계 + 회색 2단계 (--color-series-*). 글자에는 쓰지 않고 견본·띠그래프·막대에만 쓴다
 export const VENUE_SWATCH: Record<Venue, string> = {
   [Venue.CLUBHOUSE]:  'bg-series-1',
   [Venue.STARTHOUSE]: 'bg-series-2',
@@ -23,18 +24,34 @@ export const VENUE_SERIES_TOKEN: Record<Venue, string> = {
   [Venue.CLIENT]:     '--color-series-5',
 }
 
-/** 보조 버튼 — 잉크 외곽선 */
+/** 보조 버튼 — 회색 면 (이름은 장부 체계 때 그대로: 외곽선 → 회색 면으로 바뀜). 높이 44px */
 export const BTN_OUTLINE =
-  'shrink-0 h-9 px-3 text-sm font-medium rounded-[2px] border border-ink text-ink hover:bg-paper-2 active:bg-paper-3 transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
-/** 주 버튼 — 잉크 채움 (한 화면에 하나) */
+  'shrink-0 inline-flex items-center justify-center gap-1 h-11 px-4 text-sm font-semibold rounded-[14px] bg-paper-3 text-ink hover:bg-rule-2/60 active:bg-rule-2 transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
+/** 주 버튼 — 초록 채움 (한 화면에 하나). 높이 44px */
 export const BTN_FILLED =
-  'shrink-0 h-9 px-3 text-sm font-medium rounded-[2px] border border-ink bg-ink text-sheet hover:bg-ink-2 transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
-/** 큰 주 버튼 — 저장처럼 화면 하단의 단독 동작 (높이 44px) */
+  'shrink-0 inline-flex items-center justify-center gap-1 h-11 px-4 text-sm font-bold rounded-[14px] bg-brand text-sheet hover:bg-brand-ink active:bg-brand-ink transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
+/** 큰 주 버튼 — 저장처럼 화면 하단의 단독 동작 (높이 48px) */
 export const BTN_FILLED_LG =
-  'w-full h-11 px-4 text-base font-semibold rounded-[2px] border border-ink bg-ink text-sheet hover:bg-ink-2 transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
-/** 입력칸 — 각진 1px 테두리, 16px 글자(모바일 확대 방지), 숫자는 num 클래스를 함께 쓴다 */
+  'w-full inline-flex items-center justify-center h-12 px-4 text-base font-bold rounded-[14px] bg-brand text-sheet hover:bg-brand-ink active:bg-brand-ink transition-colors disabled:opacity-55 disabled:cursor-not-allowed'
+/** 입력칸 — 흰 면, 둥근 12px, 16px 글자(모바일 확대 방지), 포커스 시 초록 테두리. 숫자는 num 클래스를 함께 쓴다 */
 export const INPUT =
-  'h-10 px-3 text-base bg-sheet text-ink border border-muted rounded-[2px] placeholder:text-muted focus-visible:outline-offset-[-2px] disabled:opacity-55 disabled:cursor-not-allowed'
+  'field-focus h-11 px-3 text-base bg-sheet text-ink border border-control rounded-[12px] placeholder:text-muted transition-[border-color,box-shadow] disabled:opacity-55 disabled:cursor-not-allowed'
+
+/** 카드 — 흰 면, 둥근 18px, 그림자·테두리 없음. 카드 안에 카드를 넣지 않는다 */
+export const CARD = 'bg-sheet rounded-[18px] px-4 py-4'
+
+/** 알림 카드 — 연한 빨강 면. 제목은 text-accent-ink, 본문은 text-ink-2 */
+export const ALERT = 'bg-accent-soft rounded-[18px] px-4 py-3'
+
+/** 칩 — 좋은 증감(초록) / 나쁜 증감·경고(빨강) / 중립(회색) */
+export const CHIP_GOOD = 'inline-flex items-center gap-1 rounded-full bg-brand-soft text-brand-ink px-2.5 py-0.5 text-sm font-semibold'
+export const CHIP_BAD = 'inline-flex items-center gap-1 rounded-full bg-accent-soft text-accent-ink px-2.5 py-0.5 text-sm font-semibold'
+export const CHIP_NEUTRAL = 'inline-flex items-center gap-1 rounded-full bg-paper-3 text-ink-2 px-2.5 py-0.5 text-sm font-semibold'
+
+/** 증감률 칩 — 감소만 빨강, 그 외(증가·0)는 초록 */
+export function deltaChip(rate: number): string {
+  return rate < 0 ? CHIP_BAD : CHIP_GOOD
+}
 
 /** 증감률 표기 — 증가는 +, 감소는 회계장부식 △ */
 export function formatDelta(rate: number): string {
@@ -60,9 +77,9 @@ export function tokenColor(name: string): string {
 
 /** 차트에 쓰는 토큰 묶음 */
 export interface ChartTokens {
-  bar: string      // 기본 막대
-  strong: string   // 강조 막대 (주말 등)
-  mark: string     // 지목하는 한 점 (빨간 펜)
+  bar: string      // 기본 막대 (회색)
+  strong: string   // 강조 막대 (주말 등, 연한 초록)
+  mark: string     // 지목하는 한 막대 (브랜드 초록)
   ink: string
   grid: string
   tick: string
@@ -73,7 +90,7 @@ export function readChartTokens(): ChartTokens {
   return {
     bar: tokenColor('--color-series-4'),
     strong: tokenColor('--color-series-2'),
-    mark: tokenColor('--color-accent'),
+    mark: tokenColor('--color-brand'),
     ink: tokenColor('--color-ink'),
     grid: tokenColor('--color-rule'),
     tick: tokenColor('--color-muted'),

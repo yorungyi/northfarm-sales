@@ -1,58 +1,68 @@
-/* 노스팜CC 매출 — 디자인 토큰 (Hallmark · Almanac 체계 + 장부 팔레트)
- * 크림색 장부 종이, 청흑색 잉크, 빨간 펜 한 색. 모든 색·글꼴은 여기서만 정의한다.
+/* 노스팜CC 매출 — 디자인 토큰 (Hallmark · 1안 클리어)
+ * 연한 쿨그레이 바탕 + 흰 둥근 카드, 페어웨이 초록 한 색, 경고만 빨강. 모든 색·글꼴은 여기서만 정의한다.
+ * 토큰 이름은 장부 체계 때 이름을 그대로 쓴다(paper=바탕, sheet=카드 면 …). 대응표는 DESIGN.md.
  * Tailwind 기본 크기(text-sm 등)는 다른 화면에 영향이 없도록 덮어쓰지 않는다. */
 @theme static {
   --text-md: 1rem;
-  --text-display-s: 1.44rem;
-  --text-display: 1.728rem;
-  --text-section: 1.2rem;
+  --text-display-s: 1.5rem;
+  --text-display: 1.875rem;
+  --text-section: 1.125rem;
   --text-title: 1rem;
   --text-lead: 1rem;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 
-  /* 종이 — 크림색 장부 */
-  --color-paper: oklch(95.5% 0.018 88);
-  --color-paper-2: oklch(92.5% 0.022 86);
-  --color-paper-3: oklch(88.5% 0.024 84);
-  --color-sheet: oklch(98.6% 0.008 90);
+  /* 바탕과 면 — paper는 화면 바탕(쿨그레이), sheet는 카드·시트의 흰 면 */
+  --color-paper: oklch(96.4% 0.004 250);
+  --color-paper-2: oklch(94.6% 0.005 255);
+  --color-paper-3: oklch(91.8% 0.006 260);
+  --color-sheet: oklch(100% 0 0);
 
-  /* 잉크 — 청흑색 */
-  --color-ink: oklch(22% 0.035 258);
-  --color-ink-2: oklch(30% 0.030 258);
-  --color-muted: oklch(46% 0.022 258);
+  /* 잉크 — 제목·수치(ink), 본문(ink-2), 라벨·캡션(muted: 흰 면·바탕 모두 4.5:1 이상) */
+  --color-ink: oklch(23% 0.02 260);
+  --color-ink-2: oklch(34% 0.02 260);
+  --color-muted: oklch(51% 0.015 260);
 
-  /* 괘선 — 가는 선(행 구분)과 굵은 선(머리 아래) */
-  --color-rule: oklch(84% 0.020 80);
-  --color-rule-2: oklch(30% 0.030 258);
+  /* 선 — 카드 안 가는 구분선(rule), 합계 위 한 단계 진한 선·빈 진행칸(rule-2),
+   * 입력칸 테두리(control: 흰 면 대비 3:1 이상이라 칸 경계가 보인다) */
+  --color-rule: oklch(92.5% 0.005 260);
+  --color-rule-2: oklch(82% 0.008 260);
+  --color-control: oklch(65% 0.012 260);
 
-  /* 빨간 펜 — 선택·주의·감소에만 */
-  --color-accent: oklch(50% 0.165 27);
-  --color-accent-2: oklch(42% 0.150 27);
-  --color-accent-ink: oklch(98.5% 0.010 90);
-  --color-focus: oklch(50% 0.170 27);
-  --color-error: oklch(50% 0.165 27);
-  --color-success: oklch(42% 0.090 155);
+  /* 브랜드 — 페어웨이 초록. 주 버튼·선택 탭·진행 막대·좋은 증감 */
+  --color-brand: oklch(51% 0.14 155);
+  --color-brand-soft: oklch(95% 0.04 155);
+  --color-brand-ink: oklch(42% 0.12 155);
 
-  /* 업장 계열색 — 잉크 명도 단계 (데이터 색은 글자에 쓰지 않는다) */
-  --color-series-1: oklch(26% 0.040 258);
-  --color-series-2: oklch(42% 0.036 258);
-  --color-series-3: oklch(57% 0.030 258);
-  --color-series-4: oklch(71% 0.024 258);
-  --color-series-5: oklch(83% 0.018 258);
+  /* 경고 — 미입력·감소·목표 초과 원가. 채운 주 버튼에는 쓰지 않는다(삭제만 예외)
+   * accent: 테두리·점·막대, accent-soft: 연한 배경, accent-ink: 빨강 글자 */
+  --color-accent: oklch(57% 0.18 25);
+  --color-accent-soft: oklch(95.5% 0.03 25);
+  --color-accent-ink: oklch(48% 0.18 25);
+  --color-focus: oklch(51% 0.14 155);
+  --color-error: oklch(48% 0.18 25);
+  --color-success: oklch(42% 0.12 155);
 
-  /* 카카오톡 공유 버튼 — 카카오 브랜드색이라 장부 팔레트와 별개로 그대로 둔다 */
+  /* 업장 계열색 — 초록 명도 3단계 + 회색 2단계 (클럽하우스, 스타트하우스, 동그늘집, 서그늘집, 고객사이용)
+   * 데이터 색이라 글자에는 쓰지 않는다 */
+  --color-series-1: oklch(51% 0.14 155);
+  --color-series-2: oklch(72% 0.12 155);
+  --color-series-3: oklch(84% 0.08 155);
+  --color-series-4: oklch(80% 0.01 260);
+  --color-series-5: oklch(88% 0.006 260);
+
+  /* 카카오톡 공유 버튼 — 카카오 브랜드색이라 앱 팔레트와 별개로 그대로 둔다 */
   --color-kakao: #FEE500;
   --color-kakao-ink: #1A1A1A;
 
-  --font-display: "IBM Plex Sans KR", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "IBM Plex Sans KR", ui-sans-serif, system-ui, sans-serif;
-  /* 숫자 전용 — 원·일 같은 한글은 Plex Sans KR로 떨어진다 */
-  --font-outlier: "IBM Plex Mono", "IBM Plex Sans KR", ui-monospace, monospace;
+  --font-display: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-body: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  /* 숫자 — 같은 글꼴, 자릿수만 고정폭(tabular-nums)으로 맞춘다 */
+  --font-outlier: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
 
-  --radius-card: 0;
-  --radius-pill: 2px;
+  --radius-card: 18px;
+  --radius-pill: 9999px;
   --shadow-card: none;
   --tracking-display: -0.02em;
 }
@@ -87,7 +97,7 @@
   --z-tooltip: 600;
   --rule-hair: 1px;
   --rule-bar: 2px;
-  --display-weight: 600;
+  --display-weight: 700;
 }
 @media (max-width: 60rem) { :root { --gutter: 24px; --section-gap-s: 80px; --section-gap: 96px; --section-gap-l: 120px; } }
 @media (max-width: 40rem) { :root { --gutter: 16px; --section-gap-s: 56px; --section-gap: 72px; --section-gap-l: 96px; --gap-columns: 16px; } }
